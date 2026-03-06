@@ -50,6 +50,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+
     # --- Service: capture_now ---
     async def handle_capture_now(call: ServiceCall) -> None:
         camera_id: str | None = call.data.get(CONF_CAMERA_ENTITY_ID)
@@ -113,6 +115,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    if not await hass.config_entries.async_unload_platforms(entry, ["sensor"]):
+        return False
+
     coordinator: TimeLapseCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
     await coordinator.async_unload()
 

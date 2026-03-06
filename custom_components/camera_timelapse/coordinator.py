@@ -11,6 +11,7 @@ from typing import Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_point_in_time, async_track_time_interval
 import homeassistant.util.dt as dt_util
 
@@ -18,6 +19,7 @@ from .const import (
     CONF_ASSEMBLY_INTERVAL_MINUTES,
     CONF_CAMERAS,
     CONF_FPS,
+    CONF_HDR_FRAMES,
     CONF_INTERVAL_MINUTES,
     CONF_MAX_RETENTION_DAYS,
     CONF_MODE,
@@ -27,6 +29,9 @@ from .const import (
     CONF_TIME_END,
     CONF_TIME_RANGE_TYPE,
     CONF_TIME_START,
+    DEFAULT_HDR_FRAMES,
+    DOMAIN,
+    EVENT_TIMELAPSE_READY,
     FORMAT_APNG,
     FORMAT_GIF,
     FORMAT_MP4,
@@ -34,6 +39,8 @@ from .const import (
     MODE_DAILY,
     MODE_ROLLING,
     ROLLING_DEBOUNCE_SECONDS,
+    SIGNAL_CAMERAS_UPDATED,
+    SIGNAL_SENSOR_UPDATE,
     TIME_RANGE_ALWAYS,
     TIME_RANGE_CUSTOM,
     TIME_RANGE_SUNRISE_SUNSET,
@@ -59,6 +66,11 @@ class TimeLapseCoordinator:
         self._write_locks: dict[str, asyncio.Lock] = {}
         # Track last cleanup date per camera (to run cleanup once per day for rolling mode)
         self._last_cleanup_date: dict[str, date] = {}
+        # Sensor state
+        self._last_timelapse_info: dict[str, dict] = {}
+        self._frame_counts: dict[str, int] = {}
+        self._frame_count_dates: dict[str, date] = {}
+        self._disk_usage_mb: dict[str, float] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -107,6 +119,8 @@ class TimeLapseCoordinator:
             if camera_id in old_ids:
                 self._cancel_camera(camera_id)
             await self._schedule_camera(camera_id, cam_config)
+
+        async_dispatcher_send(hass, SIGNAL_CAMERAS_UPDATED.format(entry.entry_id))
 
     # ------------------------------------------------------------------
     # Scheduling helpers
@@ -275,20 +289,45 @@ class TimeLapseCoordinator:
         if not bypass_window and not self._is_in_active_window(camera_id):
             return
 
+        cameras = self.entry.options.get(CONF_CAMERAS, {})
+        config = cameras.get(camera_id, {})
+        n_frames = int(config.get(CONF_HDR_FRAMES, DEFAULT_HDR_FRAMES))
+
         try:
             from homeassistant.components.camera import async_get_image
-            image = await async_get_image(self.hass, camera_id, timeout=10)
+            if n_frames > 1:
+                raw_frames = []
+                for i in range(n_frames):
+                    if i > 0:
+                        await asyncio.sleep(0.5)
+                    img = await async_get_image(self.hass, camera_id, timeout=10)
+                    raw_frames.append(img.content)
+                content = await self.hass.async_add_executor_job(_average_frames, raw_frames)
+            else:
+                image = await async_get_image(self.hass, camera_id, timeout=10)
+                content = image.content
         except Exception as err:
             _LOGGER.warning("Frame capture failed for %s: %s", camera_id, err)
             return
 
         now = dt_util.now()
+
+        # Update frame counter (reset daily)
+        today = now.date()
+        if self._frame_count_dates.get(camera_id) != today:
+            self._frame_counts[camera_id] = 0
+            self._frame_count_dates[camera_id] = today
+        self._frame_counts[camera_id] = self._frame_counts.get(camera_id, 0) + 1
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_SENSOR_UPDATE.format(self.entry.entry_id, camera_id),
+        )
+
         camera_slug = _camera_slug(camera_id)
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%H%M%S")
         frame_dir = Path(self.storage_path) / "frames" / camera_slug / date_str
         frame_path = frame_dir / f"{time_str}.jpg"
-        content = image.content
 
         def _save() -> None:
             frame_dir.mkdir(parents=True, exist_ok=True)
@@ -344,6 +383,32 @@ class TimeLapseCoordinator:
             )
         _LOGGER.info("Daily timelapse written: %s", output_path)
 
+        # Update sensor state
+        self._last_timelapse_info[camera_id] = {
+            "path": str(output_path),
+            "type": MODE_DAILY,
+            "assembled_at": dt_util.now().isoformat(),
+        }
+        mb = await self.hass.async_add_executor_job(
+            self._calc_disk_mb, _camera_slug(camera_id)
+        )
+        self._disk_usage_mb[camera_id] = mb
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_SENSOR_UPDATE.format(self.entry.entry_id, camera_id),
+        )
+
+        # Fire HA event
+        self.hass.bus.async_fire(
+            EVENT_TIMELAPSE_READY,
+            {
+                "camera_entity_id": camera_id,
+                "type": MODE_DAILY,
+                "path": str(output_path),
+                "date": date_str,
+            },
+        )
+
     async def async_assemble_rolling(self, camera_id: str) -> None:
         """Build a rolling timelapse from the last N days of frames."""
         cameras = self.entry.options.get(CONF_CAMERAS, {})
@@ -374,6 +439,31 @@ class TimeLapseCoordinator:
                 self._write_timelapse, frames, output_path, fps, fmt
             )
         _LOGGER.info("Rolling timelapse written: %s", output_path)
+
+        # Update sensor state
+        self._last_timelapse_info[camera_id] = {
+            "path": str(output_path),
+            "type": MODE_ROLLING,
+            "assembled_at": dt_util.now().isoformat(),
+        }
+        mb = await self.hass.async_add_executor_job(
+            self._calc_disk_mb, _camera_slug(camera_id)
+        )
+        self._disk_usage_mb[camera_id] = mb
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_SENSOR_UPDATE.format(self.entry.entry_id, camera_id),
+        )
+
+        # Fire HA event
+        self.hass.bus.async_fire(
+            EVENT_TIMELAPSE_READY,
+            {
+                "camera_entity_id": camera_id,
+                "type": MODE_ROLLING,
+                "path": str(output_path),
+            },
+        )
 
         # For rolling-only cameras, run cleanup once per day here
         # (daily/both cameras get cleanup via _daily_assembly_and_reschedule)
@@ -465,6 +555,22 @@ class TimeLapseCoordinator:
             )
         finally:
             os.unlink(list_path)
+
+    def _calc_disk_mb(self, camera_slug: str) -> float:
+        """Return total disk usage in MB for a camera. Runs in executor."""
+        total = 0
+        for root in (
+            Path(self.storage_path) / "frames" / camera_slug,
+            Path(self.storage_path) / camera_slug,
+        ):
+            if root.exists():
+                for dirpath, _, filenames in os.walk(root):
+                    for fname in filenames:
+                        try:
+                            total += os.path.getsize(os.path.join(dirpath, fname))
+                        except OSError:
+                            pass
+        return round(total / (1024 * 1024), 2)
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -591,3 +697,18 @@ def _collect_frames_rolling(
         if day_dir.exists():
             frames.extend(sorted(day_dir.glob("*.jpg")))
     return frames
+
+
+def _average_frames(raw_list: list[bytes]) -> bytes:
+    """Average N JPEG frames pixel-wise using iterative Pillow blending. Runs in executor."""
+    import io  # noqa: PLC0415
+
+    from PIL import Image  # noqa: PLC0415
+
+    images = [Image.open(io.BytesIO(b)).convert("RGB") for b in raw_list]
+    result = images[0]
+    for i, img in enumerate(images[1:], 2):
+        result = Image.blend(result, img, 1.0 / i)
+    buf = io.BytesIO()
+    result.save(buf, format="JPEG")
+    return buf.getvalue()

@@ -57,3 +57,14 @@ DEFAULT_ASSEMBLY_INTERVAL_MINUTES = 0
 
 # Rolling assembly debounce interval in seconds
 ROLLING_DEBOUNCE_SECONDS = 300
+
+# Events
+EVENT_TIMELAPSE_READY = "camera_timelapse_timelapse_ready"
+
+# Dispatcher signals
+SIGNAL_CAMERAS_UPDATED = "camera_timelapse_cameras_updated_{}"  # .format(entry_id)
+SIGNAL_SENSOR_UPDATE = "camera_timelapse_sensor_update_{}_{}"   # .format(entry_id, camera_id)
+
+# Frame averaging (HDR-like noise reduction)
+CONF_HDR_FRAMES = "hdr_frames"
+DEFAULT_HDR_FRAMES = 0  # 0 = disabled, 2-5 = number of frames to average
