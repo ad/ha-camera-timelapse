@@ -17,6 +17,7 @@ CONF_ROLLING_PERIOD_DAYS = "rolling_period_days"
 CONF_OUTPUT_FORMAT = "output_format"
 CONF_FPS = "fps"
 CONF_MAX_RETENTION_DAYS = "max_retention_days"
+CONF_ASSEMBLY_INTERVAL_MINUTES = "assembly_interval_minutes"
 
 # Time range types
 TIME_RANGE_SUNRISE_SUNSET = "sunrise_sunset"
@@ -51,6 +52,8 @@ DEFAULT_ROLLING_PERIOD_DAYS = 7
 DEFAULT_OUTPUT_FORMAT = FORMAT_MP4
 DEFAULT_FPS = 10
 DEFAULT_MAX_RETENTION_DAYS = 30
+# 0 = only at end of active window; >0 = also assemble periodically every N minutes
+DEFAULT_ASSEMBLY_INTERVAL_MINUTES = 0
 
 # Rolling assembly debounce interval in seconds
 ROLLING_DEBOUNCE_SECONDS = 300

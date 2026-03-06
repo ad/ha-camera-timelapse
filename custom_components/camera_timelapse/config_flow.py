@@ -10,6 +10,7 @@ from .const import (
     ACTION_ADD,
     ACTION_EDIT,
     ACTION_REMOVE,
+    CONF_ASSEMBLY_INTERVAL_MINUTES,
     CONF_CAMERA_ENTITY_ID,
     CONF_CAMERAS,
     CONF_FPS,
@@ -22,6 +23,7 @@ from .const import (
     CONF_TIME_END,
     CONF_TIME_RANGE_TYPE,
     CONF_TIME_START,
+    DEFAULT_ASSEMBLY_INTERVAL_MINUTES,
     DEFAULT_FPS,
     DEFAULT_INTERVAL_MINUTES,
     DEFAULT_MAX_RETENTION_DAYS,
@@ -209,6 +211,7 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                     CONF_OUTPUT_FORMAT: user_input[CONF_OUTPUT_FORMAT],
                     CONF_FPS: user_input[CONF_FPS],
                     CONF_MAX_RETENTION_DAYS: user_input[CONF_MAX_RETENTION_DAYS],
+                    CONF_ASSEMBLY_INTERVAL_MINUTES: user_input[CONF_ASSEMBLY_INTERVAL_MINUTES],
                 }
                 self._cameras[camera_id] = cam_config
                 return self.async_create_entry(
@@ -295,6 +298,14 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=0, max=3650, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="days"
+                    )
+                ),
+                vol.Required(
+                    CONF_ASSEMBLY_INTERVAL_MINUTES,
+                    default=existing.get(CONF_ASSEMBLY_INTERVAL_MINUTES, DEFAULT_ASSEMBLY_INTERVAL_MINUTES),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=1440, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="min"
                     )
                 ),
             }

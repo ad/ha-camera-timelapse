@@ -15,6 +15,7 @@ from homeassistant.helpers.event import async_track_point_in_time, async_track_t
 import homeassistant.util.dt as dt_util
 
 from .const import (
+    CONF_ASSEMBLY_INTERVAL_MINUTES,
     CONF_CAMERAS,
     CONF_FPS,
     CONF_INTERVAL_MINUTES,
@@ -51,6 +52,7 @@ class TimeLapseCoordinator:
         # Unsub callables keyed by camera entity_id
         self._capture_unsubs: dict[str, Callable] = {}
         self._assembly_unsubs: dict[str, Callable] = {}
+        self._periodic_assembly_unsubs: dict[str, Callable] = {}
         # Last rolling assembly timestamp per camera (for debounce)
         self._last_rolling: dict[str, datetime] = {}
         # Serialise write operations per camera
@@ -80,8 +82,11 @@ class TimeLapseCoordinator:
             unsub()
         for unsub in list(self._assembly_unsubs.values()):
             unsub()
+        for unsub in list(self._periodic_assembly_unsubs.values()):
+            unsub()
         self._capture_unsubs.clear()
         self._assembly_unsubs.clear()
+        self._periodic_assembly_unsubs.clear()
 
     async def _handle_options_update(
         self, hass: HomeAssistant, entry: ConfigEntry
@@ -127,8 +132,29 @@ class TimeLapseCoordinator:
         if mode in (MODE_DAILY, MODE_BOTH):
             await self._schedule_assembly_trigger(camera_id, config)
 
+            # Periodic mid-day assembly if configured
+            assembly_interval = int(
+                config.get(CONF_ASSEMBLY_INTERVAL_MINUTES, 0)
+            )
+            if assembly_interval > 0:
+                @callback
+                def _periodic_assembly_cb(
+                    now: datetime, cid: str = camera_id
+                ) -> None:
+                    self.hass.async_create_task(
+                        self.async_assemble_daily(cid, dt_util.now().date())
+                    )
+
+                self._periodic_assembly_unsubs[camera_id] = async_track_time_interval(
+                    self.hass,
+                    _periodic_assembly_cb,
+                    timedelta(minutes=assembly_interval),
+                )
+
     def _cancel_camera(self, camera_id: str) -> None:
         """Cancel capture and assembly tasks for a camera."""
+        if camera_id in self._periodic_assembly_unsubs:
+            self._periodic_assembly_unsubs.pop(camera_id)()
         if camera_id in self._capture_unsubs:
             self._capture_unsubs.pop(camera_id)()
         if camera_id in self._assembly_unsubs:

@@ -46,7 +46,8 @@
           "rolling_period_days": "Rolling window",
           "output_format": "Output format",
           "fps": "Frames per second",
-          "max_retention_days": "Max retention (0 = unlimited)"
+          "max_retention_days": "Max retention (0 = unlimited)",
+          "assembly_interval_minutes": "Assemble timelapse every (minutes, 0 = only at end of day)"
         }
       }
     },
