@@ -118,6 +118,7 @@ Manually trigger timelapse assembly without waiting for the scheduled trigger.
 
 ## Notes
 
+- **Storage path on HA OS / HA Green**: you **must** use `/media/...` as the storage path (e.g. `/media/timelapses`). Paths like `/homeassistant/...` or `/config/...` are written inside the HA core container and are not accessible from add-on terminals or the Media Browser. `/media` is the only directory shared across all containers in HA OS.
 - **GIF quality**: GIF is limited to 256 colours per frame. For natural outdoor scenes, MP4 or APNG give significantly better results.
 - **MP4 dimensions**: frame width and height are automatically rounded down to even numbers (required by H.264/yuv420p). Frames with different resolutions are resized to match the first frame.
 - **Polar regions**: if sunrise or sunset data is unavailable (midnight sun / polar night), the integration falls back to capturing all day.
