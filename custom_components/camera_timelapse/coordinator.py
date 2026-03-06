@@ -295,7 +295,10 @@ class TimeLapseCoordinator:
         camera_slug = _camera_slug(camera_id)
         date_str = target_date.strftime("%Y-%m-%d")
         frame_dir = Path(self.storage_path) / "frames" / camera_slug / date_str
-        frames = sorted(frame_dir.glob("*.jpg")) if frame_dir.exists() else []
+
+        frames = await self.hass.async_add_executor_job(
+            _collect_frames_day, frame_dir
+        )
 
         if len(frames) < 2:
             _LOGGER.debug("Not enough frames for %s on %s (%d frame(s))", camera_id, date_str, len(frames))
@@ -304,13 +307,12 @@ class TimeLapseCoordinator:
         fmt = config.get(CONF_OUTPUT_FORMAT, FORMAT_MP4)
         fps = int(config.get(CONF_FPS, 10))
         output_dir = Path(self.storage_path) / camera_slug
-        output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{date_str}.{fmt}"
 
         lock = self._write_locks.setdefault(camera_id, asyncio.Lock())
         async with lock:
             await self.hass.async_add_executor_job(
-                self._write_timelapse, list(frames), output_path, fps, fmt
+                self._write_timelapse, frames, output_path, fps, fmt
             )
         _LOGGER.info("Daily timelapse written: %s", output_path)
 
@@ -326,12 +328,9 @@ class TimeLapseCoordinator:
         frames_root = Path(self.storage_path) / "frames" / camera_slug
         today = dt_util.now().date()
 
-        frames: list[Path] = []
-        for i in range(n_days, -1, -1):
-            day = today - timedelta(days=i)
-            day_dir = frames_root / day.strftime("%Y-%m-%d")
-            if day_dir.exists():
-                frames.extend(sorted(day_dir.glob("*.jpg")))
+        frames = await self.hass.async_add_executor_job(
+            _collect_frames_rolling, frames_root, today, n_days
+        )
 
         if len(frames) < 2:
             return
@@ -339,7 +338,6 @@ class TimeLapseCoordinator:
         fmt = config.get(CONF_OUTPUT_FORMAT, FORMAT_MP4)
         fps = int(config.get(CONF_FPS, 10))
         output_dir = Path(self.storage_path) / camera_slug
-        output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"rolling_{n_days}d.{fmt}"
 
         lock = self._write_locks.setdefault(camera_id, asyncio.Lock())
@@ -357,6 +355,7 @@ class TimeLapseCoordinator:
         self, frames: list[Path], output: Path, fps: int, fmt: str
     ) -> None:
         """Dispatch to the appropriate format writer."""
+        output.parent.mkdir(parents=True, exist_ok=True)
         if fmt == FORMAT_GIF:
             self._write_gif(frames, output, fps)
         elif fmt == FORMAT_APNG:
@@ -512,7 +511,10 @@ class TimeLapseCoordinator:
                 / camera_slug
                 / yesterday.strftime("%Y-%m-%d")
             )
-            if frames_dir.exists() and any(frames_dir.glob("*.jpg")):
+            has_frames = await self.hass.async_add_executor_job(
+                lambda d=frames_dir: d.exists() and bool(list(d.glob("*.jpg"))[:1])
+            )
+            if has_frames:
                 _LOGGER.info(
                     "Recovering missing daily timelapse for %s on %s",
                     camera_id,
@@ -531,3 +533,23 @@ def _camera_slug(entity_id: str) -> str:
     if slug.startswith("camera_"):
         slug = slug[len("camera_"):]
     return slug
+
+
+def _collect_frames_day(frame_dir: Path) -> list[Path]:
+    """Collect sorted frame paths for one day. Runs in executor."""
+    if not frame_dir.exists():
+        return []
+    return sorted(frame_dir.glob("*.jpg"))
+
+
+def _collect_frames_rolling(
+    frames_root: Path, today: date, n_days: int
+) -> list[Path]:
+    """Collect sorted frame paths for the last N days. Runs in executor."""
+    frames: list[Path] = []
+    for i in range(n_days, -1, -1):
+        day = today - timedelta(days=i)
+        day_dir = frames_root / day.strftime("%Y-%m-%d")
+        if day_dir.exists():
+            frames.extend(sorted(day_dir.glob("*.jpg")))
+    return frames
