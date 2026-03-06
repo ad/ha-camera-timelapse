@@ -1,0 +1,52 @@
+capture_now:
+  name: Capture Frame Now
+  description: >
+    Immediately capture a frame from one or all configured cameras.
+    Bypasses the active time-window gate — useful for testing.
+  fields:
+    camera_entity_id:
+      name: Camera
+      description: >
+        The camera entity to capture. Leave empty to capture all
+        configured cameras at once.
+      required: false
+      example: "camera.front_door"
+      selector:
+        entity:
+          domain: camera
+
+generate_timelapse:
+  name: Generate Timelapse Now
+  description: >
+    Manually trigger timelapse assembly for a camera without waiting
+    for the scheduled end-of-day trigger.
+  fields:
+    camera_entity_id:
+      name: Camera
+      description: Camera entity to generate timelapse for.
+      required: true
+      example: "camera.front_door"
+      selector:
+        entity:
+          domain: camera
+    mode:
+      name: Mode
+      description: Which timelapse type to generate.
+      required: false
+      default: "daily"
+      example: "rolling"
+      selector:
+        select:
+          options:
+            - "daily"
+            - "rolling"
+            - "both"
+    date:
+      name: Date
+      description: >
+        Date to assemble in YYYY-MM-DD format (daily mode only).
+        Defaults to today if not provided.
+      required: false
+      example: "2024-01-15"
+      selector:
+        text: {}

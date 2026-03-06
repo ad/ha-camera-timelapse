@@ -1,0 +1,16 @@
+{
+  "domain": "camera_timelapse",
+  "name": "Camera Timelapse",
+  "version": "1.0.0",
+  "config_flow": true,
+  "documentation": "https://github.com/ad/ha-camera-timelapse",
+  "issue_tracker": "https://github.com/ad/ha-camera-timelapse/issues",
+  "iot_class": "local_polling",
+  "requirements": [
+    "Pillow>=10.0.0",
+    "imageio[ffmpeg]>=2.28.0"
+  ],
+  "dependencies": [],
+  "codeowners": ["@ad"],
+  "homeassistant": "2023.4.0"
+}

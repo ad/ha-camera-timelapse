@@ -1,0 +1,68 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Camera Timelapse Setup",
+        "description": "Configure the integration. Cameras are added after setup via the Configure button.",
+        "data": {
+          "name": "Integration name",
+          "storage_path": "Storage path"
+        },
+        "data_description": {
+          "storage_path": "Directory where timelapses and frames are saved. Use /media/timelapses for HA Media Browser access."
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This storage path is already configured in another instance."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Manage Cameras",
+        "description": "Add, edit or remove cameras from timelapse tracking.",
+        "data": {
+          "action": "Action",
+          "camera_entity_id": "Camera to edit or remove"
+        }
+      },
+      "add_camera": {
+        "title": "Add Camera",
+        "description": "Select the camera entity to add.",
+        "data": {
+          "camera_entity_id": "Camera"
+        }
+      },
+      "camera_settings": {
+        "title": "Camera Settings",
+        "description": "Configure timelapse settings for {camera_id}.",
+        "data": {
+          "interval_minutes": "Capture interval",
+          "time_range_type": "Active time window",
+          "time_start": "Start time",
+          "time_end": "End time",
+          "mode": "Timelapse mode",
+          "rolling_period_days": "Rolling window",
+          "output_format": "Output format",
+          "fps": "Frames per second",
+          "max_retention_days": "Max retention (0 = unlimited)"
+        }
+      }
+    },
+    "error": {
+      "required": "This field is required.",
+      "already_configured": "This camera is already configured."
+    }
+  },
+  "services": {
+    "capture_now": {
+      "name": "Capture Frame Now",
+      "description": "Immediately capture a frame from one or all configured cameras, bypassing the active time window."
+    },
+    "generate_timelapse": {
+      "name": "Generate Timelapse Now",
+      "description": "Manually trigger timelapse assembly for a camera."
+    }
+  }
+}
