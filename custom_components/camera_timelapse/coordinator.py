@@ -259,10 +259,14 @@ class TimeLapseCoordinator:
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%H%M%S")
         frame_dir = Path(self.storage_path) / "frames" / camera_slug / date_str
-        frame_dir.mkdir(parents=True, exist_ok=True)
         frame_path = frame_dir / f"{time_str}.jpg"
+        content = image.content
 
-        await self.hass.async_add_executor_job(frame_path.write_bytes, image.content)
+        def _save() -> None:
+            frame_dir.mkdir(parents=True, exist_ok=True)
+            frame_path.write_bytes(content)
+
+        await self.hass.async_add_executor_job(_save)
         _LOGGER.debug("Frame saved: %s", frame_path)
 
         # Trigger rolling assembly (debounced)
