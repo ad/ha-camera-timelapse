@@ -405,8 +405,8 @@ class TimeLapseCoordinator:
         with imageio.get_writer(
             str(output),
             fps=fps,
+            plugin="ffmpeg",
             codec="libx264",
-            quality=None,
             ffmpeg_params=["-crf", "23", "-preset", "fast", "-pix_fmt", "yuv420p"],
         ) as writer:
             for frame_path in frames:
