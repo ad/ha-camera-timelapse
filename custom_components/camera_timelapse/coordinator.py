@@ -57,6 +57,8 @@ class TimeLapseCoordinator:
         self._last_rolling: dict[str, datetime] = {}
         # Serialise write operations per camera
         self._write_locks: dict[str, asyncio.Lock] = {}
+        # Track last cleanup date per camera (to run cleanup once per day for rolling mode)
+        self._last_cleanup_date: dict[str, date] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -372,6 +374,16 @@ class TimeLapseCoordinator:
                 self._write_timelapse, frames, output_path, fps, fmt
             )
         _LOGGER.info("Rolling timelapse written: %s", output_path)
+
+        # For rolling-only cameras, run cleanup once per day here
+        # (daily/both cameras get cleanup via _daily_assembly_and_reschedule)
+        cameras = self.entry.options.get(CONF_CAMERAS, {})
+        config = cameras.get(camera_id, {})
+        if config.get(CONF_MODE) == MODE_ROLLING:
+            today = dt_util.now().date()
+            if self._last_cleanup_date.get(camera_id) != today:
+                self._last_cleanup_date[camera_id] = today
+                await self.async_cleanup_camera(camera_id)
 
     # ------------------------------------------------------------------
     # Writers (run in executor thread)
