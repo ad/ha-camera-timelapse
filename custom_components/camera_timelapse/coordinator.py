@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_point_in_time, async_track_time_interval
 import homeassistant.util.dt as dt_util
 
@@ -112,11 +112,13 @@ class TimeLapseCoordinator:
 
         interval = timedelta(minutes=int(config[CONF_INTERVAL_MINUTES]))
 
+        @callback
+        def _capture_cb(now: datetime, cid: str = camera_id) -> None:
+            self.hass.async_create_task(self.async_capture_frame(cid))
+
         self._capture_unsubs[camera_id] = async_track_time_interval(
             self.hass,
-            lambda now, cid=camera_id: self.hass.async_create_task(
-                self.async_capture_frame(cid)
-            ),
+            _capture_cb,
             interval,
         )
 
@@ -156,11 +158,13 @@ class TimeLapseCoordinator:
             if trigger_time <= now:
                 trigger_time = trigger_time + timedelta(days=1)
 
+        @callback
+        def _assembly_cb(t: datetime, cid: str = camera_id) -> None:
+            self.hass.async_create_task(self._daily_assembly_and_reschedule(cid))
+
         self._assembly_unsubs[camera_id] = async_track_point_in_time(
             self.hass,
-            lambda t, cid=camera_id: self.hass.async_create_task(
-                self._daily_assembly_and_reschedule(cid)
-            ),
+            _assembly_cb,
             trigger_time,
         )
 
