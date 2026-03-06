@@ -392,29 +392,42 @@ class TimeLapseCoordinator:
         )
 
     def _write_mp4(self, frames: list[Path], output: Path, fps: int) -> None:
-        import imageio  # noqa: PLC0415
-        from PIL import Image  # noqa: PLC0415
+        import subprocess  # noqa: PLC0415
+        import tempfile  # noqa: PLC0415
 
-        # Read first frame to get target dimensions (must be even for yuv420p)
-        first = Image.open(frames[0])
-        w, h = first.size
-        w = w if w % 2 == 0 else w - 1
-        h = h if h % 2 == 0 else h - 1
-        first.close()
+        import imageio_ffmpeg  # noqa: PLC0415
 
-        with imageio.get_writer(
-            str(output),
-            fps=fps,
-            plugin="ffmpeg",
-            codec="libx264",
-            ffmpeg_params=["-crf", "23", "-preset", "fast", "-pix_fmt", "yuv420p"],
-        ) as writer:
-            for frame_path in frames:
-                img = Image.open(frame_path).convert("RGB")
-                if img.size != (w, h):
-                    img = img.resize((w, h), Image.LANCZOS)
-                import numpy as np  # noqa: PLC0415
-                writer.append_data(np.array(img))
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+        # Build a concat demuxer list file so ffmpeg reads frames in order
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False
+        ) as f:
+            list_path = f.name
+            duration = 1.0 / fps
+            for frame in frames:
+                f.write(f"file '{frame.absolute()}'\n")
+                f.write(f"duration {duration:.6f}\n")
+
+        try:
+            subprocess.run(
+                [
+                    ffmpeg_exe, "-y",
+                    "-f", "concat", "-safe", "0",
+                    "-i", list_path,
+                    # Ensure even dimensions required by yuv420p
+                    "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                    "-c:v", "libx264",
+                    "-crf", "23",
+                    "-preset", "fast",
+                    "-pix_fmt", "yuv420p",
+                    str(output),
+                ],
+                check=True,
+                capture_output=True,
+            )
+        finally:
+            os.unlink(list_path)
 
     # ------------------------------------------------------------------
     # Cleanup
