@@ -79,6 +79,8 @@ class TimeLapseCoordinator:
         # Persistent store for last periodic assembly times
         self._store: Store | None = None
         self._last_periodic_assembly: dict[str, datetime] = {}
+        # Path of the most recently captured frame per camera (for image entity)
+        self._latest_frame_path: dict[str, Path] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -412,6 +414,7 @@ class TimeLapseCoordinator:
             frame_path.write_bytes(content)
 
         await self.hass.async_add_executor_job(_save)
+        self._latest_frame_path[camera_id] = frame_path
         _LOGGER.debug("Frame saved: %s", frame_path)
 
         # Trigger rolling assembly (debounced)
@@ -871,6 +874,17 @@ class TimeLapseCoordinator:
                     "Restored last_timelapse for %s: %s", camera_id, info["path"]
                 )
 
+            # latest_frame — most recent JPEG in today's frame dir (for image entity)
+            latest: Path | None = await self.hass.async_add_executor_job(
+                _find_latest_frame, frame_dir
+            )
+            if latest:
+                self._latest_frame_path[camera_id] = latest
+
+    def get_latest_frame_path(self, camera_id: str) -> Path | None:
+        """Return path of the most recently captured frame, or None."""
+        return self._latest_frame_path.get(camera_id)
+
     async def _recover_missing_daily(self) -> None:
         """On startup, assemble any missing daily timelapses from yesterday."""
         cameras: dict = self.entry.options.get(CONF_CAMERAS, {})
@@ -915,6 +929,14 @@ class TimeLapseCoordinator:
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+def _find_latest_frame(frame_dir: Path) -> Path | None:
+    """Return the most recently modified JPEG in *frame_dir*, or None."""
+    if not frame_dir.exists():
+        return None
+    files = list(frame_dir.glob("*.jpg"))
+    return max(files, key=lambda f: f.stat().st_mtime) if files else None
+
 
 def _find_latest_timelapse(output_dir: Path) -> dict | None:
     """Return info dict for the most recently modified timelapse file, or None."""

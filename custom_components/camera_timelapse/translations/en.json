@@ -73,6 +73,11 @@
       "disk_usage": {
         "name": "Disk Usage"
       }
+    },
+    "image": {
+      "latest_frame": {
+        "name": "Latest Frame"
+      }
     }
   },
   "services": {
