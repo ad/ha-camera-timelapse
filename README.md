@@ -130,7 +130,7 @@ For each configured camera the integration creates:
 
 | Entity | Type | Description |
 |---|---|---|
-| `image.{camera}_latest_frame` | Image | Most recently captured frame — tap to view inline |
+| `image.{camera}_latest_frame` | Image | Most recently captured frame — tap to view inline; exposes `file_path` attribute with the absolute path to the JPEG file |
 | `sensor.{camera}_frames_today` | Sensor | Number of frames captured today |
 | `sensor.{camera}_last_timelapse` | Sensor | Filename and metadata of the last assembled timelapse |
 | `sensor.{camera}_disk_usage` | Sensor | Total disk usage for this camera (frames + timelapses), in MB |

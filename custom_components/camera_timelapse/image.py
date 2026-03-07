@@ -109,6 +109,13 @@ class CameraTimelapseLatestFrameImage(ImageEntity):
             self._attr_image_last_updated = dt_util.utcnow()
         self.async_write_ha_state()
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        path = self._coordinator.get_latest_frame_path(self._camera_id)
+        if path is None:
+            return {}
+        return {"file_path": str(path)}
+
     async def async_image(self) -> bytes | None:
         path = self._coordinator.get_latest_frame_path(self._camera_id)
         if path is None or not path.exists():
