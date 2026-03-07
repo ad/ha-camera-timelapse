@@ -22,13 +22,14 @@ Home Assistant custom integration that creates timelapses from your cameras — 
 - **Auto cleanup** — delete frames and timelapse files older than N days; runs on every startup to catch missed windows
 - **HA services** — manual capture and assembly triggers
 - **Sensor entities** — frames captured today, last timelapse info, disk usage per camera
+- **Image entity** — live view of the latest captured frame, visible directly in the HA dashboard
 - **Media Browser** — files stored in `/media`, accessible via HA Media Browser
 
 ---
 
 ## Requirements
 
-- Home Assistant 2023.4.0 or newer
+- Home Assistant 2023.7.0 or newer
 - Python packages installed automatically by HA:
   - `Pillow >= 10.0.0`
   - `imageio[ffmpeg] >= 2.28.0` (includes a bundled static ffmpeg binary)
@@ -119,6 +120,21 @@ Manually trigger timelapse assembly without waiting for the scheduled trigger.
 | `camera_entity_id` | Yes | Camera to assemble |
 | `mode` | No | `daily` / `rolling` / `both` (default: `daily`) |
 | `date` | No | Date in `YYYY-MM-DD` for daily mode (default: today) |
+
+---
+
+## Entities
+
+For each configured camera the integration creates:
+
+| Entity | Type | Description |
+|---|---|---|
+| `image.{camera}_latest_frame` | Image | Most recently captured frame — tap to view inline |
+| `sensor.{camera}_frames_today` | Sensor | Number of frames captured today |
+| `sensor.{camera}_last_timelapse` | Sensor | Filename and metadata of the last assembled timelapse |
+| `sensor.{camera}_disk_usage` | Sensor | Total disk usage for this camera (frames + timelapses), in MB |
+
+All entities are restored from disk on HA restart, so their state is never `Unknown` after a reboot.
 
 ---
 
