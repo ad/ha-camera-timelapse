@@ -835,12 +835,14 @@ class TimeLapseCoordinator:
     # ------------------------------------------------------------------
 
     async def _restore_frame_counts(self) -> None:
-        """Count today's frames already on disk and populate the in-memory counter."""
+        """Restore in-memory sensor state from disk after a restart."""
         cameras: dict = self.entry.options.get(CONF_CAMERAS, {})
         today = dt_util.now().date()
         date_str = today.strftime("%Y-%m-%d")
         for camera_id in cameras:
             camera_slug = _camera_slug(camera_id)
+
+            # frames_today
             frame_dir = Path(self.storage_path) / "frames" / camera_slug / date_str
             count: int = await self.hass.async_add_executor_job(
                 lambda d=frame_dir: len(list(d.glob("*.jpg"))) if d.exists() else 0
@@ -850,6 +852,23 @@ class TimeLapseCoordinator:
                 self._frame_count_dates[camera_id] = today
                 _LOGGER.debug(
                     "Restored frames_today=%d for %s from disk", count, camera_id
+                )
+
+            # disk_usage
+            mb: float = await self.hass.async_add_executor_job(
+                self._calc_disk_mb, camera_slug
+            )
+            self._disk_usage_mb[camera_id] = mb
+
+            # last_timelapse — find the most recently modified file in the output dir
+            output_dir = Path(self.storage_path) / camera_slug
+            info: dict | None = await self.hass.async_add_executor_job(
+                _find_latest_timelapse, output_dir
+            )
+            if info:
+                self._last_timelapse_info[camera_id] = info
+                _LOGGER.debug(
+                    "Restored last_timelapse for %s: %s", camera_id, info["path"]
                 )
 
     async def _recover_missing_daily(self) -> None:
@@ -896,6 +915,21 @@ class TimeLapseCoordinator:
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+def _find_latest_timelapse(output_dir: Path) -> dict | None:
+    """Return info dict for the most recently modified timelapse file, or None."""
+    if not output_dir.exists():
+        return None
+    files = [f for f in output_dir.iterdir() if f.is_file()]
+    if not files:
+        return None
+    latest = max(files, key=lambda f: f.stat().st_mtime)
+    timelapse_type = MODE_ROLLING if latest.stem.startswith("rolling_") else MODE_DAILY
+    assembled_at = dt_util.as_local(
+        dt_util.utc_from_timestamp(latest.stat().st_mtime)
+    ).isoformat()
+    return {"path": str(latest), "type": timelapse_type, "assembled_at": assembled_at}
+
 
 def _camera_slug(entity_id: str) -> str:
     """Convert camera entity_id to a filesystem-safe directory name."""
