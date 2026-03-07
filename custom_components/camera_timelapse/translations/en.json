@@ -55,7 +55,7 @@
         "data_description": {
           "hdr_frames": "Capture multiple frames per interval and average them to reduce noise. 0 disables this feature.",
           "keep_frames": "When disabled (streaming mode), raw JPEG frames are deleted after each assembly and new frames are appended to the existing timelapse. Saves disk space. Only compatible with Daily mode — Rolling mode always keeps frames.",
-          "placeholder_image": "Path to a JPEG used as the background when the camera is unavailable. Leave empty to use the auto-generated default at {storage_path}/placeholder.jpg. The text 'Camera unavailable' is overlaid on the image at runtime."
+          "placeholder_image": "Path to a JPEG used as the background when the camera is unavailable. Leave empty to use the auto-generated default (placeholder.jpg in the storage directory). The text 'Camera unavailable' is overlaid on the image at runtime."
         }
       }
     },
