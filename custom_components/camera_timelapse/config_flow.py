@@ -16,6 +16,7 @@ from .const import (
     CONF_FPS,
     CONF_HDR_FRAMES,
     CONF_INTERVAL_MINUTES,
+    CONF_KEEP_FRAMES,
     CONF_MAX_RETENTION_DAYS,
     CONF_MODE,
     CONF_OUTPUT_FORMAT,
@@ -28,6 +29,7 @@ from .const import (
     DEFAULT_FPS,
     DEFAULT_HDR_FRAMES,
     DEFAULT_INTERVAL_MINUTES,
+    DEFAULT_KEEP_FRAMES,
     DEFAULT_MAX_RETENTION_DAYS,
     DEFAULT_MODE,
     DEFAULT_OUTPUT_FORMAT,
@@ -215,6 +217,7 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                     CONF_MAX_RETENTION_DAYS: user_input[CONF_MAX_RETENTION_DAYS],
                     CONF_ASSEMBLY_INTERVAL_MINUTES: user_input[CONF_ASSEMBLY_INTERVAL_MINUTES],
                     CONF_HDR_FRAMES: user_input.get(CONF_HDR_FRAMES, DEFAULT_HDR_FRAMES),
+                    CONF_KEEP_FRAMES: user_input.get(CONF_KEEP_FRAMES, DEFAULT_KEEP_FRAMES),
                 }
                 self._cameras[camera_id] = cam_config
                 return self.async_create_entry(
@@ -319,6 +322,10 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                         min=0, max=5, step=1, mode=selector.NumberSelectorMode.BOX
                     )
                 ),
+                vol.Optional(
+                    CONF_KEEP_FRAMES,
+                    default=existing.get(CONF_KEEP_FRAMES, DEFAULT_KEEP_FRAMES),
+                ): selector.BooleanSelector(),
             }
         )
 

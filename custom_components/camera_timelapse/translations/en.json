@@ -48,10 +48,12 @@
           "fps": "Frames per second",
           "max_retention_days": "Max retention (0 = unlimited)",
           "assembly_interval_minutes": "Assemble timelapse every (minutes, 0 = only at end of day)",
-          "hdr_frames": "Frame averaging (0 = off, 2–5 = frames to average)"
+          "hdr_frames": "Frame averaging (0 = off, 2–5 = frames to average)",
+          "keep_frames": "Keep frame files on disk after assembly"
         },
         "data_description": {
-          "hdr_frames": "Capture multiple frames per interval and average them to reduce noise. 0 disables this feature."
+          "hdr_frames": "Capture multiple frames per interval and average them to reduce noise. 0 disables this feature.",
+          "keep_frames": "When disabled (streaming mode), raw JPEG frames are deleted after each assembly and new frames are appended to the existing timelapse. Saves disk space. Only compatible with Daily mode — Rolling mode always keeps frames."
         }
       }
     },

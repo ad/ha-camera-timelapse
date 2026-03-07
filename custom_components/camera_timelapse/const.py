@@ -68,3 +68,8 @@ SIGNAL_SENSOR_UPDATE = "camera_timelapse_sensor_update_{}_{}"   # .format(entry_
 # Frame averaging (HDR-like noise reduction)
 CONF_HDR_FRAMES = "hdr_frames"
 DEFAULT_HDR_FRAMES = 0  # 0 = disabled, 2-5 = number of frames to average
+
+# Streaming mode: discard frame files after each assembly instead of keeping them.
+# Incompatible with rolling mode (rolling needs historical frames on disk).
+CONF_KEEP_FRAMES = "keep_frames"
+DEFAULT_KEEP_FRAMES = True

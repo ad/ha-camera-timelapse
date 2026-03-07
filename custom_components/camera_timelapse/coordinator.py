@@ -13,7 +13,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_point_in_time, async_track_time_interval
+from homeassistant.helpers.storage import Store
 import homeassistant.util.dt as dt_util
+
+_STORAGE_VERSION = 1
 
 from .const import (
     CONF_ASSEMBLY_INTERVAL_MINUTES,
@@ -21,6 +24,7 @@ from .const import (
     CONF_FPS,
     CONF_HDR_FRAMES,
     CONF_INTERVAL_MINUTES,
+    CONF_KEEP_FRAMES,
     CONF_MAX_RETENTION_DAYS,
     CONF_MODE,
     CONF_OUTPUT_FORMAT,
@@ -30,6 +34,7 @@ from .const import (
     CONF_TIME_RANGE_TYPE,
     CONF_TIME_START,
     DEFAULT_HDR_FRAMES,
+    DEFAULT_KEEP_FRAMES,
     DOMAIN,
     EVENT_TIMELAPSE_READY,
     FORMAT_APNG,
@@ -71,6 +76,9 @@ class TimeLapseCoordinator:
         self._frame_counts: dict[str, int] = {}
         self._frame_count_dates: dict[str, date] = {}
         self._disk_usage_mb: dict[str, float] = {}
+        # Persistent store for last periodic assembly times
+        self._store: Store | None = None
+        self._last_periodic_assembly: dict[str, datetime] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -78,6 +86,18 @@ class TimeLapseCoordinator:
 
     async def async_setup(self) -> None:
         """Read options and schedule capture/assembly tasks for each camera."""
+        # Load persistent state
+        self._store = Store(
+            self.hass, _STORAGE_VERSION,
+            f"{DOMAIN}.{self.entry.entry_id}.periodic_assembly",
+        )
+        stored: dict = await self._store.async_load() or {}
+        for cam_id, ts in stored.items():
+            try:
+                self._last_periodic_assembly[cam_id] = datetime.fromisoformat(ts)
+            except (ValueError, TypeError):
+                pass
+
         cameras: dict = self.entry.options.get(CONF_CAMERAS, {})
         for camera_id, cam_config in cameras.items():
             await self._schedule_camera(camera_id, cam_config)
@@ -87,8 +107,17 @@ class TimeLapseCoordinator:
             self.entry.add_update_listener(self._handle_options_update)
         )
 
+        # Restore frames_today counters from disk
+        await self._restore_frame_counts()
+
         # Startup recovery: assemble yesterday's missing daily timelapses
         await self._recover_missing_daily()
+
+        # Run cleanup for all cameras — catches any missed cleanup windows
+        # (e.g. HA was restarted before the daily assembly trigger fired).
+        # async_cleanup_camera is idempotent and safe to call at any time.
+        for camera_id in cameras:
+            await self.async_cleanup_camera(camera_id)
 
     async def async_unload(self) -> None:
         """Cancel all scheduled tasks."""
@@ -153,19 +182,7 @@ class TimeLapseCoordinator:
                 config.get(CONF_ASSEMBLY_INTERVAL_MINUTES, 0)
             )
             if assembly_interval > 0:
-                @callback
-                def _periodic_assembly_cb(
-                    now: datetime, cid: str = camera_id
-                ) -> None:
-                    self.hass.async_create_task(
-                        self.async_assemble_daily(cid, dt_util.now().date())
-                    )
-
-                self._periodic_assembly_unsubs[camera_id] = async_track_time_interval(
-                    self.hass,
-                    _periodic_assembly_cb,
-                    timedelta(minutes=assembly_interval),
-                )
+                self._schedule_periodic_assembly(camera_id, config, assembly_interval)
 
     def _cancel_camera(self, camera_id: str) -> None:
         """Cancel capture and assembly tasks for a camera."""
@@ -175,6 +192,67 @@ class TimeLapseCoordinator:
             self._capture_unsubs.pop(camera_id)()
         if camera_id in self._assembly_unsubs:
             self._assembly_unsubs.pop(camera_id)()
+
+    def _schedule_periodic_assembly(
+        self, camera_id: str, config: dict, interval_minutes: int
+    ) -> None:
+        """Schedule next periodic assembly via one-shot point-in-time trigger.
+
+        Uses the stored last-run timestamp to compute the next fire time, so
+        the interval survives HA restarts. If one or more intervals were missed
+        while HA was down, a single catch-up run is fired after a short delay
+        instead of running multiple times.
+        """
+        interval = timedelta(minutes=interval_minutes)
+        now = dt_util.now()
+        last_run = self._last_periodic_assembly.get(camera_id)
+
+        if last_run is None:
+            # First time ever — wait one full interval before assembling
+            next_run = now + interval
+        else:
+            next_run = last_run + interval
+            if next_run <= now:
+                # Missed one or more intervals: fire once soon, then resume normally
+                next_run = now + timedelta(seconds=30)
+
+        # Cancel any existing one-shot for this camera
+        if camera_id in self._periodic_assembly_unsubs:
+            self._periodic_assembly_unsubs.pop(camera_id)()
+
+        @callback
+        def _cb(
+            _t: datetime,
+            cid: str = camera_id,
+            cfg: dict = config,
+            mins: int = interval_minutes,
+        ) -> None:
+            self.hass.async_create_task(self._run_periodic_assembly(cid, cfg, mins))
+
+        self._periodic_assembly_unsubs[camera_id] = async_track_point_in_time(
+            self.hass, _cb, next_run
+        )
+        _LOGGER.debug(
+            "Next periodic assembly for %s scheduled at %s", camera_id, next_run
+        )
+
+    async def _run_periodic_assembly(
+        self, camera_id: str, config: dict, interval_minutes: int
+    ) -> None:
+        """Execute periodic assembly, persist timestamp, schedule next run."""
+        now = dt_util.now()
+        self._last_periodic_assembly[camera_id] = now
+        await self._save_assembly_times()
+        await self.async_assemble_daily(camera_id, now.date())
+        self._schedule_periodic_assembly(camera_id, config, interval_minutes)
+
+    async def _save_assembly_times(self) -> None:
+        """Persist last periodic assembly timestamps to HA storage."""
+        if self._store is None:
+            return
+        await self._store.async_save(
+            {k: v.isoformat() for k, v in self._last_periodic_assembly.items()}
+        )
 
     async def _schedule_assembly_trigger(self, camera_id: str, config: dict) -> None:
         """Schedule the daily assembly at end-of-active-window or 23:59."""
@@ -376,12 +454,28 @@ class TimeLapseCoordinator:
         output_dir = Path(self.storage_path) / camera_slug
         output_path = output_dir / f"{date_str}.{fmt}"
 
+        # Streaming mode: append new frames to existing file, then discard frame files.
+        # Only valid for daily mode — rolling mode needs frames to rebuild from scratch.
+        mode = config.get(CONF_MODE, MODE_DAILY)
+        keep_frames = bool(config.get(CONF_KEEP_FRAMES, DEFAULT_KEEP_FRAMES))
+        streaming = not keep_frames and mode == MODE_DAILY
+
+        # In streaming mode pass the existing timelapse as append target (if it exists)
+        append_to = output_path if streaming and output_path.exists() else None
+
         lock = self._write_locks.setdefault(camera_id, asyncio.Lock())
         async with lock:
             await self.hass.async_add_executor_job(
-                self._write_timelapse, frames, output_path, fps, fmt
+                self._write_timelapse, frames, output_path, fps, fmt, append_to
             )
         _LOGGER.info("Daily timelapse written: %s", output_path)
+
+        # Delete frame directory after successful assembly in streaming mode
+        if streaming:
+            await self.hass.async_add_executor_job(
+                shutil.rmtree, str(frame_dir), True
+            )
+            _LOGGER.debug("Streaming mode: deleted frame dir %s", frame_dir)
 
         # Update sensor state
         self._last_timelapse_info[camera_id] = {
@@ -480,16 +574,33 @@ class TimeLapseCoordinator:
     # ------------------------------------------------------------------
 
     def _write_timelapse(
-        self, frames: list[Path], output: Path, fps: int, fmt: str
+        self,
+        frames: list[Path],
+        output: Path,
+        fps: int,
+        fmt: str,
+        append_to: Path | None = None,
     ) -> None:
-        """Dispatch to the appropriate format writer."""
+        """Dispatch to the appropriate format writer.
+
+        If *append_to* is provided (streaming mode), new frames are appended to
+        that file in-place rather than creating a fresh timelapse from scratch.
+        """
         output.parent.mkdir(parents=True, exist_ok=True)
-        if fmt == FORMAT_GIF:
-            self._write_gif(frames, output, fps)
-        elif fmt == FORMAT_APNG:
-            self._write_apng(frames, output, fps)
+        if append_to is not None and append_to.exists():
+            if fmt == FORMAT_GIF:
+                self._append_gif(frames, append_to, fps)
+            elif fmt == FORMAT_APNG:
+                self._append_apng(frames, append_to, fps)
+            else:
+                self._append_mp4(frames, append_to, fps)
         else:
-            self._write_mp4(frames, output, fps)
+            if fmt == FORMAT_GIF:
+                self._write_gif(frames, output, fps)
+            elif fmt == FORMAT_APNG:
+                self._write_apng(frames, output, fps)
+            else:
+                self._write_mp4(frames, output, fps)
 
     def _write_gif(self, frames: list[Path], output: Path, fps: int) -> None:
         from PIL import Image  # noqa: PLC0415
@@ -555,6 +666,102 @@ class TimeLapseCoordinator:
             )
         finally:
             os.unlink(list_path)
+
+    # ------------------------------------------------------------------
+    # Append writers (streaming mode) — run in executor thread
+    # ------------------------------------------------------------------
+
+    def _append_mp4(self, new_frames: list[Path], existing: Path, fps: int) -> None:
+        """Append *new_frames* to an existing MP4 without re-encoding.
+
+        Strategy: encode new frames into a temporary MP4, then use ffmpeg
+        concat with -c copy to join existing + new into a replacement file.
+        """
+        import subprocess  # noqa: PLC0415
+        import tempfile  # noqa: PLC0415
+
+        import imageio_ffmpeg  # noqa: PLC0415
+
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        tmp_new = existing.with_name(existing.stem + "._new.mp4")
+        tmp_out = existing.with_name(existing.stem + "._out.mp4")
+        list_path: str | None = None
+        try:
+            # Step 1: encode new frames to a temp file (same settings as _write_mp4)
+            self._write_mp4(new_frames, tmp_new, fps)
+
+            # Step 2: concat list — existing video followed by new segment
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", delete=False
+            ) as f:
+                list_path = f.name
+                f.write(f"file '{existing.absolute()}'\n")
+                f.write(f"file '{tmp_new.absolute()}'\n")
+
+            # Step 3: join with stream copy (no quality loss, fast)
+            subprocess.run(
+                [
+                    ffmpeg_exe, "-y",
+                    "-f", "concat", "-safe", "0",
+                    "-i", list_path,
+                    "-c", "copy",
+                    str(tmp_out),
+                ],
+                check=True,
+                capture_output=True,
+            )
+
+            # Step 4: atomically replace existing file
+            tmp_out.replace(existing)
+        finally:
+            tmp_new.unlink(missing_ok=True)
+            tmp_out.unlink(missing_ok=True)
+            if list_path:
+                os.unlink(list_path)
+
+    def _append_gif(self, new_frames: list[Path], existing: Path, fps: int) -> None:
+        """Append new JPEG frames to an existing GIF animation."""
+        from PIL import Image  # noqa: PLC0415
+
+        # Extract all frames from the existing GIF
+        existing_images: list[Image.Image] = []
+        with Image.open(existing) as gif:
+            for i in range(getattr(gif, "n_frames", 1)):
+                gif.seek(i)
+                existing_images.append(gif.copy().convert("RGB"))
+
+        new_images = [Image.open(f).convert("RGB") for f in new_frames]
+        all_images = existing_images + new_images
+        duration_ms = max(1, int(1000 / fps))
+        all_images[0].save(
+            existing,
+            save_all=True,
+            append_images=all_images[1:],
+            duration=duration_ms,
+            loop=0,
+            optimize=True,
+        )
+
+    def _append_apng(self, new_frames: list[Path], existing: Path, fps: int) -> None:
+        """Append new JPEG frames to an existing APNG animation."""
+        from PIL import Image  # noqa: PLC0415
+
+        existing_images: list[Image.Image] = []
+        with Image.open(existing) as apng:
+            for i in range(getattr(apng, "n_frames", 1)):
+                apng.seek(i)
+                existing_images.append(apng.copy().convert("RGBA"))
+
+        new_images = [Image.open(f).convert("RGBA") for f in new_frames]
+        all_images = existing_images + new_images
+        duration_ms = max(1, int(1000 / fps))
+        all_images[0].save(
+            existing,
+            save_all=True,
+            append_images=all_images[1:],
+            duration=duration_ms,
+            loop=0,
+        )
 
     def _calc_disk_mb(self, camera_slug: str) -> float:
         """Return total disk usage in MB for a camera. Runs in executor."""
@@ -627,6 +834,24 @@ class TimeLapseCoordinator:
     # Startup recovery
     # ------------------------------------------------------------------
 
+    async def _restore_frame_counts(self) -> None:
+        """Count today's frames already on disk and populate the in-memory counter."""
+        cameras: dict = self.entry.options.get(CONF_CAMERAS, {})
+        today = dt_util.now().date()
+        date_str = today.strftime("%Y-%m-%d")
+        for camera_id in cameras:
+            camera_slug = _camera_slug(camera_id)
+            frame_dir = Path(self.storage_path) / "frames" / camera_slug / date_str
+            count: int = await self.hass.async_add_executor_job(
+                lambda d=frame_dir: len(list(d.glob("*.jpg"))) if d.exists() else 0
+            )
+            if count > 0:
+                self._frame_counts[camera_id] = count
+                self._frame_count_dates[camera_id] = today
+                _LOGGER.debug(
+                    "Restored frames_today=%d for %s from disk", count, camera_id
+                )
+
     async def _recover_missing_daily(self) -> None:
         """On startup, assemble any missing daily timelapses from yesterday."""
         cameras: dict = self.entry.options.get(CONF_CAMERAS, {})
@@ -665,6 +890,7 @@ class TimeLapseCoordinator:
                     yesterday,
                 )
                 await self.async_assemble_daily(camera_id, yesterday)
+                await self.async_cleanup_camera(camera_id)
 
 
 # ------------------------------------------------------------------
