@@ -73,3 +73,10 @@ DEFAULT_HDR_FRAMES = 0  # 0 = disabled, 2-5 = number of frames to average
 # Incompatible with rolling mode (rolling needs historical frames on disk).
 CONF_KEEP_FRAMES = "keep_frames"
 DEFAULT_KEEP_FRAMES = True
+
+# Placeholder image shown when the camera fails to provide a frame.
+# The file at this path is used as a background; "Camera unavailable" text
+# is overlaid on top at runtime. Empty string = use the auto-generated default
+# at {storage_path}/placeholder.jpg.
+CONF_PLACEHOLDER_IMAGE = "placeholder_image"
+DEFAULT_PLACEHOLDER_IMAGE = ""

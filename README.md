@@ -22,7 +22,7 @@ Home Assistant custom integration that creates timelapses from your cameras — 
 - **Auto cleanup** — delete frames and timelapse files older than N days; runs on every startup to catch missed windows
 - **HA services** — manual capture and assembly triggers
 - **Sensor entities** — frames captured today, last timelapse info, disk usage per camera
-- **Image entity** — live view of the latest captured frame, visible directly in the HA dashboard
+- **Image entity** — live view of the latest captured frame; when the camera is unreachable, shows a customisable placeholder with "Camera unavailable" overlay
 - **Media Browser** — files stored in `/media`, accessible via HA Media Browser
 
 ---
@@ -80,6 +80,7 @@ In the **Configure** dialog:
 | Assemble every | Also assemble mid-day every N minutes (0 = only at end of day) | 0 |
 | Frame averaging | Capture N frames per interval and average them to reduce noise | 0 (off) |
 | Keep frame files | When off, raw JPEG frames are deleted after each assembly (streaming mode) | On |
+| Unavailable background | Path to a JPEG used as background when the camera fails to deliver a frame (leave empty for auto-generated default) | empty |
 
 ---
 
@@ -161,6 +162,7 @@ Streaming mode is only available with **Daily** timelapse mode — Rolling mode 
 - **Polar regions**: if sunrise or sunset data is unavailable (midnight sun / polar night), the integration falls back to capturing all day.
 - **HA restart recovery**: on startup the integration checks for missing daily timelapses from yesterday and assembles them automatically if frames are present. Missed cleanup windows are also applied on every startup.
 - **Periodic assembly interval**: the interval is counted from the last actual run time (persisted across restarts), not from the clock. If HA was down and one or more intervals were missed, a single catch-up assembly runs shortly after startup.
+- **Camera unavailable placeholder**: on every failed frame capture the image entity switches to a placeholder — your background image with "Camera unavailable" text overlaid. The default background (`{storage_path}/placeholder.jpg`) is auto-generated as a dark-grey JPEG on first startup; replace it with any JPEG you prefer, or point the per-camera setting to a different file.
 
 ---
 

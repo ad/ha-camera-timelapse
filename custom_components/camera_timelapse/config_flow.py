@@ -17,6 +17,8 @@ from .const import (
     CONF_HDR_FRAMES,
     CONF_INTERVAL_MINUTES,
     CONF_KEEP_FRAMES,
+    CONF_PLACEHOLDER_IMAGE,
+    DEFAULT_PLACEHOLDER_IMAGE,
     CONF_MAX_RETENTION_DAYS,
     CONF_MODE,
     CONF_OUTPUT_FORMAT,
@@ -218,6 +220,7 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                     CONF_ASSEMBLY_INTERVAL_MINUTES: user_input[CONF_ASSEMBLY_INTERVAL_MINUTES],
                     CONF_HDR_FRAMES: user_input.get(CONF_HDR_FRAMES, DEFAULT_HDR_FRAMES),
                     CONF_KEEP_FRAMES: user_input.get(CONF_KEEP_FRAMES, DEFAULT_KEEP_FRAMES),
+                    CONF_PLACEHOLDER_IMAGE: user_input.get(CONF_PLACEHOLDER_IMAGE, DEFAULT_PLACEHOLDER_IMAGE).strip(),
                 }
                 self._cameras[camera_id] = cam_config
                 return self.async_create_entry(
@@ -326,6 +329,12 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                     CONF_KEEP_FRAMES,
                     default=existing.get(CONF_KEEP_FRAMES, DEFAULT_KEEP_FRAMES),
                 ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_PLACEHOLDER_IMAGE,
+                    default=existing.get(CONF_PLACEHOLDER_IMAGE, DEFAULT_PLACEHOLDER_IMAGE),
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                ),
             }
         )
 
