@@ -441,27 +441,17 @@ class TimeLapseCoordinator:
     # ------------------------------------------------------------------
 
     async def _update_unavailable_frame(self, camera_id: str) -> None:
-        """Generate a placeholder image with 'Camera unavailable' text and update
-        the image entity so the user sees the overlay instead of a stale frame."""
+        """Point the image entity at the placeholder image when the camera is unavailable."""
         cameras = self.entry.options.get(CONF_CAMERAS, {})
         config = cameras.get(camera_id, {})
         custom_bg = config.get(CONF_PLACEHOLDER_IMAGE, DEFAULT_PLACEHOLDER_IMAGE).strip()
-        bg_path = custom_bg or str(Path(self.storage_path) / "placeholder.jpg")
+        bg_path = Path(custom_bg) if custom_bg else Path(self.storage_path) / "placeholder.jpg"
 
-        frame_bytes: bytes = await self.hass.async_add_executor_job(
-            _make_unavailable_frame, bg_path
-        )
+        if not bg_path.exists():
+            _LOGGER.debug("Placeholder image not found at %s, skipping update", bg_path)
+            return
 
-        camera_slug = _camera_slug(camera_id)
-        placeholder_dir = Path(self.storage_path) / ".placeholders"
-        placeholder_path = placeholder_dir / f"{camera_slug}.jpg"
-
-        def _save() -> None:
-            placeholder_dir.mkdir(parents=True, exist_ok=True)
-            placeholder_path.write_bytes(frame_bytes)
-
-        await self.hass.async_add_executor_job(_save)
-        self._latest_frame_path[camera_id] = placeholder_path
+        self._latest_frame_path[camera_id] = bg_path
         async_dispatcher_send(
             self.hass,
             SIGNAL_SENSOR_UPDATE.format(self.entry.entry_id, camera_id),
@@ -986,53 +976,6 @@ def _create_default_placeholder(storage_path: str) -> None:
     img = Image.new("RGB", (640, 360), color=(30, 30, 30))
     img.save(str(target), format="JPEG", quality=85)
 
-
-def _make_unavailable_frame(bg_path: str) -> bytes:
-    """Return JPEG bytes: *bg_path* image with 'Camera unavailable' text overlay.
-
-    Falls back to a generated dark-grey background if the file cannot be opened.
-    """
-    import io  # noqa: PLC0415
-
-    from PIL import Image, ImageDraw, ImageFont  # noqa: PLC0415
-
-    img: Image.Image | None = None
-    if bg_path:
-        try:
-            img = Image.open(bg_path).convert("RGB")
-        except Exception:  # noqa: BLE001
-            pass
-    if img is None:
-        img = Image.new("RGB", (640, 360), color=(30, 30, 30))
-
-    draw = ImageDraw.Draw(img)
-    w, h = img.size
-    text = "Camera unavailable"
-    font_size = max(20, h // 10)
-
-    font: ImageFont.ImageFont | ImageFont.FreeTypeFont
-    try:
-        # load_default(size=) available since Pillow 10.1; fall back gracefully
-        font = ImageFont.load_default(size=font_size)
-    except TypeError:
-        font = ImageFont.load_default()
-
-    try:
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    except AttributeError:
-        tw, th = len(text) * (font_size // 2), font_size
-
-    x, y = (w - tw) // 2, (h - th) // 2
-    pad = font_size // 2
-    # Dark backing rectangle so text is readable on any background
-    draw.rectangle([(x - pad, y - pad), (x + tw + pad, y + th + pad)], fill=(0, 0, 0))
-    draw.text((x + 2, y + 2), text, font=font, fill=(60, 60, 60))  # shadow
-    draw.text((x, y), text, font=font, fill=(255, 200, 0))          # yellow text
-
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85)
-    return buf.getvalue()
 
 
 def _find_latest_frame(frame_dir: Path) -> Path | None:
