@@ -913,9 +913,11 @@ class TimeLapseCoordinator:
                     "Restored last_timelapse for %s: %s", camera_id, info["path"]
                 )
 
-            # latest_frame — most recent JPEG in today's frame dir (for image entity)
+            # latest_frame — most recent JPEG across all day dirs, or placeholder
+            frames_root = Path(self.storage_path) / "frames" / camera_slug
+            placeholder_path = Path(self.storage_path) / ".placeholders" / f"{camera_slug}.jpg"
             latest: Path | None = await self.hass.async_add_executor_job(
-                _find_latest_frame, frame_dir
+                _find_latest_frame_any, frames_root, placeholder_path
             )
             if latest:
                 self._latest_frame_path[camera_id] = latest
@@ -1039,6 +1041,27 @@ def _find_latest_frame(frame_dir: Path) -> Path | None:
         return None
     files = list(frame_dir.glob("*.jpg"))
     return max(files, key=lambda f: f.stat().st_mtime) if files else None
+
+
+def _find_latest_frame_any(frames_root: Path, placeholder_path: Path) -> Path | None:
+    """Return the most recently modified JPEG across all day subdirectories.
+
+    Falls back to the placeholder if no real frames exist on disk.
+    """
+    best: Path | None = None
+    best_mtime = 0.0
+    if frames_root.exists():
+        for day_dir in frames_root.iterdir():
+            if not day_dir.is_dir():
+                continue
+            for f in day_dir.glob("*.jpg"):
+                mtime = f.stat().st_mtime
+                if mtime > best_mtime:
+                    best_mtime = mtime
+                    best = f
+    if best is None and placeholder_path.exists():
+        best = placeholder_path
+    return best
 
 
 def _find_latest_timelapse(output_dir: Path) -> dict | None:
