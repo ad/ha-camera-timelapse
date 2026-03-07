@@ -65,6 +65,17 @@
     }
   },
   "entity": {
+    "button": {
+      "capture_frame": {
+        "name": "Capture Frame"
+      },
+      "generate_timelapse": {
+        "name": "Generate Timelapse"
+      },
+      "cleanup_frames": {
+        "name": "Cleanup Frames"
+      }
+    },
     "sensor": {
       "last_timelapse": {
         "name": "Last Timelapse"

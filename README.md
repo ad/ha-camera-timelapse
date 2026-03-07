@@ -134,6 +134,9 @@ For each configured camera the integration creates:
 | `sensor.{camera}_frames_today` | Sensor | Number of frames captured today |
 | `sensor.{camera}_last_timelapse` | Sensor | Filename and metadata of the last assembled timelapse |
 | `sensor.{camera}_disk_usage` | Sensor | Total disk usage for this camera (frames + timelapses), in MB |
+| `button.{camera}_capture_frame` | Button | Immediately capture a frame, bypassing the active time window |
+| `button.{camera}_generate_timelapse` | Button | Assemble a timelapse for today using the camera's configured mode |
+| `button.{camera}_cleanup_frames` | Button | Delete frames and timelapse files older than the configured retention period |
 
 All entities are restored from disk on HA restart, so their state is never `Unknown` after a reboot.
 
