@@ -910,13 +910,13 @@ class TimeLapseCoordinator:
 
         tmp = Path(tempfile.mkdtemp(prefix="timelapse_stab_"))
         result: list[Path] = []
-        for fp, (dx, dy) in zip(frames, translations):
+        for idx, (fp, (dx, dy)) in enumerate(zip(frames, translations)):
             dx = max(-cap, min(cap, dx))
             dy = max(-cap, min(cap, dy))
             img = Image.open(fp).convert("RGB")
             # Affine translation matrix (fill edges with black)
-            corrected = img.transform(img.size, Image.AFFINE, (1, 0, -dx, 0, 1, -dy))
-            out = tmp / fp.name
+            corrected = img.transform(img.size, Image.Transform.AFFINE, (1, 0, -dx, 0, 1, -dy))
+            out = tmp / f"{idx:06d}.jpg"
             corrected.crop(crop_box).save(out, format="JPEG", quality=92)
             result.append(out)
 
