@@ -955,7 +955,12 @@ class TimeLapseCoordinator:
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
 
+        import pathlib as _pathlib
+        _bundled = str(
+            _pathlib.Path(__file__).parent / "fonts" / "DejaVuSans-Bold.ttf"
+        )
         _FONT_PATHS = [
+            _bundled,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
