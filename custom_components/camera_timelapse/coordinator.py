@@ -955,19 +955,35 @@ class TimeLapseCoordinator:
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
 
-        try:
-            font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size
-            )
-        except (IOError, OSError):
-            font = ImageFont.load_default()
+        _FONT_PATHS = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        ]
+        font = None
+        for fp in _FONT_PATHS:
+            try:
+                font = ImageFont.truetype(fp, font_size)
+                break
+            except (IOError, OSError):
+                continue
+        if font is None:
+            try:
+                font = ImageFont.load_default(size=font_size)  # Pillow >= 10.1
+            except TypeError:
+                font = ImageFont.load_default()
 
         pad = 6
-        line_h = font_size + line_spacing
-        widths = [
-            draw.textbbox((0, 0), line, font=font, stroke_width=stroke_width)[2]
+        # Measure actual rendered text dimensions for correct block sizing
+        bboxes = [
+            draw.textbbox((0, 0), line, font=font, stroke_width=stroke_width)
             for line in sensor_lines
         ]
+        widths = [b[2] - b[0] for b in bboxes]
+        line_heights = [b[3] - b[1] for b in bboxes]
+        actual_line_h = max(line_heights) if line_heights else font_size
+        line_h = actual_line_h + line_spacing
         block_w = max(widths) + pad * 2
         block_h = len(sensor_lines) * line_h + pad * 2
         iw, ih = img.size
