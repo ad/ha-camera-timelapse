@@ -17,8 +17,16 @@ from .const import (
     CONF_HDR_FRAMES,
     CONF_INTERVAL_MINUTES,
     CONF_KEEP_FRAMES,
+    CONF_OVERLAY_FONT_SIZE,
+    CONF_OVERLAY_POSITION,
+    CONF_OVERLAY_SENSORS,
     CONF_PLACEHOLDER_IMAGE,
+    CONF_STABILIZATION,
+    DEFAULT_OVERLAY_FONT_SIZE,
+    DEFAULT_OVERLAY_POSITION,
+    DEFAULT_OVERLAY_SENSORS,
     DEFAULT_PLACEHOLDER_IMAGE,
+    DEFAULT_STABILIZATION,
     CONF_MAX_RETENTION_DAYS,
     CONF_MODE,
     CONF_OUTPUT_FORMAT,
@@ -221,6 +229,10 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                     CONF_HDR_FRAMES: user_input.get(CONF_HDR_FRAMES, DEFAULT_HDR_FRAMES),
                     CONF_KEEP_FRAMES: user_input.get(CONF_KEEP_FRAMES, DEFAULT_KEEP_FRAMES),
                     CONF_PLACEHOLDER_IMAGE: user_input.get(CONF_PLACEHOLDER_IMAGE, DEFAULT_PLACEHOLDER_IMAGE).strip(),
+                    CONF_STABILIZATION: user_input.get(CONF_STABILIZATION, DEFAULT_STABILIZATION),
+                    CONF_OVERLAY_SENSORS: user_input.get(CONF_OVERLAY_SENSORS, DEFAULT_OVERLAY_SENSORS),
+                    CONF_OVERLAY_POSITION: user_input.get(CONF_OVERLAY_POSITION, DEFAULT_OVERLAY_POSITION),
+                    CONF_OVERLAY_FONT_SIZE: user_input.get(CONF_OVERLAY_FONT_SIZE, DEFAULT_OVERLAY_FONT_SIZE),
                 }
                 self._cameras[camera_id] = cam_config
                 return self.async_create_entry(
@@ -334,6 +346,38 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                     default=existing.get(CONF_PLACEHOLDER_IMAGE, DEFAULT_PLACEHOLDER_IMAGE),
                 ): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                ),
+                vol.Optional(
+                    CONF_STABILIZATION,
+                    default=existing.get(CONF_STABILIZATION, DEFAULT_STABILIZATION),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_OVERLAY_SENSORS,
+                    default=existing.get(CONF_OVERLAY_SENSORS, DEFAULT_OVERLAY_SENSORS),
+                ): selector.EntityMultiSelector(
+                    selector.EntityMultiSelectorConfig()
+                ),
+                vol.Optional(
+                    CONF_OVERLAY_POSITION,
+                    default=existing.get(CONF_OVERLAY_POSITION, DEFAULT_OVERLAY_POSITION),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value="top_left", label="Top left"),
+                            selector.SelectOptionDict(value="top_right", label="Top right"),
+                            selector.SelectOptionDict(value="bottom_left", label="Bottom left"),
+                            selector.SelectOptionDict(value="bottom_right", label="Bottom right"),
+                        ],
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                ),
+                vol.Optional(
+                    CONF_OVERLAY_FONT_SIZE,
+                    default=existing.get(CONF_OVERLAY_FONT_SIZE, DEFAULT_OVERLAY_FONT_SIZE),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=8, max=48, step=2, mode=selector.NumberSelectorMode.SLIDER
+                    )
                 ),
             }
         )

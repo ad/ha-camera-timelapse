@@ -80,3 +80,18 @@ DEFAULT_KEEP_FRAMES = True
 # at {storage_path}/placeholder.jpg.
 CONF_PLACEHOLDER_IMAGE = "placeholder_image"
 DEFAULT_PLACEHOLDER_IMAGE = ""
+
+# Frame stabilization: compensate for camera shake via numpy phase correlation.
+# Applied at timelapse assembly time (translation-only correction).
+CONF_STABILIZATION = "stabilization"
+DEFAULT_STABILIZATION = False
+
+# Sensor overlay: draw live sensor values on each captured frame.
+CONF_OVERLAY_SENSORS = "overlay_sensors"   # list[str] of entity_ids
+DEFAULT_OVERLAY_SENSORS: list = []
+
+CONF_OVERLAY_POSITION = "overlay_position"  # top_left | top_right | bottom_left | bottom_right
+DEFAULT_OVERLAY_POSITION = "top_left"
+
+CONF_OVERLAY_FONT_SIZE = "overlay_font_size"  # int, pixels
+DEFAULT_OVERLAY_FONT_SIZE = 16

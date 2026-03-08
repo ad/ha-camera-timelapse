@@ -50,12 +50,19 @@
           "assembly_interval_minutes": "Assemble timelapse every (minutes, 0 = only at end of day)",
           "hdr_frames": "Frame averaging (0 = off, 2–5 = frames to average)",
           "keep_frames": "Keep frame files on disk after assembly",
-          "placeholder_image": "Unavailable camera background image (path)"
+          "placeholder_image": "Unavailable camera background image (path)",
+          "stabilization": "Frame stabilization",
+          "overlay_sensors": "Overlay sensors",
+          "overlay_position": "Overlay position",
+          "overlay_font_size": "Overlay font size"
         },
         "data_description": {
           "hdr_frames": "Capture multiple frames per interval and average them to reduce noise. 0 disables this feature.",
           "keep_frames": "When disabled (streaming mode), raw JPEG frames are deleted after each assembly and new frames are appended to the existing timelapse. Saves disk space. Only compatible with Daily mode — Rolling mode always keeps frames.",
-          "placeholder_image": "Path to a JPEG used as the background when the camera is unavailable. Leave empty to use the auto-generated default (placeholder.jpg in the storage directory). The text 'Camera unavailable' is overlaid on the image at runtime."
+          "placeholder_image": "Path to a JPEG used as the background when the camera is unavailable. Leave empty to use the auto-generated default (placeholder.jpg in the storage directory). The text 'Camera unavailable' is overlaid on the image at runtime.",
+          "stabilization": "Compensate for camera shake by aligning frames using phase correlation (translation correction only). Applied at timelapse assembly time. Requires numpy (available in Home Assistant by default).",
+          "overlay_sensors": "Select sensors whose current value will be drawn on every captured frame.",
+          "overlay_font_size": "Font size for the sensor overlay text in pixels."
         }
       }
     },

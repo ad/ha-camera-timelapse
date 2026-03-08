@@ -25,8 +25,15 @@ from .const import (
     CONF_HDR_FRAMES,
     CONF_INTERVAL_MINUTES,
     CONF_KEEP_FRAMES,
+    CONF_OVERLAY_FONT_SIZE,
+    CONF_OVERLAY_POSITION,
+    CONF_OVERLAY_SENSORS,
     CONF_PLACEHOLDER_IMAGE,
+    CONF_STABILIZATION,
+    DEFAULT_OVERLAY_FONT_SIZE,
+    DEFAULT_OVERLAY_POSITION,
     DEFAULT_PLACEHOLDER_IMAGE,
+    DEFAULT_STABILIZATION,
     CONF_MAX_RETENTION_DAYS,
     CONF_MODE,
     CONF_OUTPUT_FORMAT,
@@ -417,6 +424,22 @@ class TimeLapseCoordinator:
         frame_dir = Path(self.storage_path) / "frames" / camera_slug / date_str
         frame_path = frame_dir / f"{time_str}.jpg"
 
+        # Apply sensor overlay if configured (read states in async context)
+        overlay_sensors: list[str] = config.get(CONF_OVERLAY_SENSORS, [])
+        sensor_lines: list[str] = []
+        for eid in overlay_sensors:
+            state = self.hass.states.get(eid)
+            if state and state.state not in ("unavailable", "unknown"):
+                unit = state.attributes.get("unit_of_measurement", "")
+                sensor_lines.append(f"{state.state} {unit}".strip())
+
+        if sensor_lines:
+            overlay_pos = config.get(CONF_OVERLAY_POSITION, DEFAULT_OVERLAY_POSITION)
+            overlay_fs = int(config.get(CONF_OVERLAY_FONT_SIZE, DEFAULT_OVERLAY_FONT_SIZE))
+            content = await self.hass.async_add_executor_job(
+                self._apply_overlay, content, sensor_lines, overlay_pos, overlay_fs
+            )
+
         def _save() -> None:
             frame_dir.mkdir(parents=True, exist_ok=True)
             frame_path.write_bytes(content)
@@ -500,11 +523,12 @@ class TimeLapseCoordinator:
 
         # In streaming mode pass the existing timelapse as append target (if it exists)
         append_to = output_path if streaming and output_path.exists() else None
+        stabilize = bool(config.get(CONF_STABILIZATION, DEFAULT_STABILIZATION))
 
         lock = self._write_locks.setdefault(camera_id, asyncio.Lock())
         async with lock:
             await self.hass.async_add_executor_job(
-                self._write_timelapse, frames, output_path, fps, fmt, append_to
+                self._write_timelapse, frames, output_path, fps, fmt, append_to, stabilize
             )
         _LOGGER.info("Daily timelapse written: %s", output_path)
 
@@ -565,10 +589,11 @@ class TimeLapseCoordinator:
         output_dir = Path(self.storage_path) / camera_slug
         output_path = output_dir / f"rolling_{n_days}d.{fmt}"
 
+        stabilize = bool(config.get(CONF_STABILIZATION, DEFAULT_STABILIZATION))
         lock = self._write_locks.setdefault(camera_id, asyncio.Lock())
         async with lock:
             await self.hass.async_add_executor_job(
-                self._write_timelapse, frames, output_path, fps, fmt
+                self._write_timelapse, frames, output_path, fps, fmt, None, stabilize
             )
         _LOGGER.info("Rolling timelapse written: %s", output_path)
 
@@ -618,27 +643,41 @@ class TimeLapseCoordinator:
         fps: int,
         fmt: str,
         append_to: Path | None = None,
+        stabilize: bool = False,
     ) -> None:
         """Dispatch to the appropriate format writer.
 
         If *append_to* is provided (streaming mode), new frames are appended to
         that file in-place rather than creating a fresh timelapse from scratch.
+        If *stabilize* is True, frames are aligned via phase correlation before encoding.
         """
         output.parent.mkdir(parents=True, exist_ok=True)
-        if append_to is not None and append_to.exists():
-            if fmt == FORMAT_GIF:
-                self._append_gif(frames, append_to, fps)
-            elif fmt == FORMAT_APNG:
-                self._append_apng(frames, append_to, fps)
+
+        tmp_dir: Path | None = None
+        if stabilize and len(frames) >= 2:
+            stabilized = self._stabilize_frame_sequence(frames)
+            if stabilized is not frames:
+                tmp_dir = stabilized[0].parent
+                frames = stabilized
+
+        try:
+            if append_to is not None and append_to.exists():
+                if fmt == FORMAT_GIF:
+                    self._append_gif(frames, append_to, fps)
+                elif fmt == FORMAT_APNG:
+                    self._append_apng(frames, append_to, fps)
+                else:
+                    self._append_mp4(frames, append_to, fps)
             else:
-                self._append_mp4(frames, append_to, fps)
-        else:
-            if fmt == FORMAT_GIF:
-                self._write_gif(frames, output, fps)
-            elif fmt == FORMAT_APNG:
-                self._write_apng(frames, output, fps)
-            else:
-                self._write_mp4(frames, output, fps)
+                if fmt == FORMAT_GIF:
+                    self._write_gif(frames, output, fps)
+                elif fmt == FORMAT_APNG:
+                    self._write_apng(frames, output, fps)
+                else:
+                    self._write_mp4(frames, output, fps)
+        finally:
+            if tmp_dir and tmp_dir.exists():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def _write_gif(self, frames: list[Path], output: Path, fps: int) -> None:
         from PIL import Image  # noqa: PLC0415
@@ -816,6 +855,118 @@ class TimeLapseCoordinator:
                         except OSError:
                             pass
         return round(total / (1024 * 1024), 2)
+
+    # ------------------------------------------------------------------
+    # Stabilization (runs in executor)
+    # ------------------------------------------------------------------
+
+    def _stabilize_frame_sequence(self, frames: list[Path]) -> list[Path]:
+        """Align frames using numpy FFT phase correlation (translation-only).
+
+        Returns a list of paths to stabilized JPEG copies in a temp directory,
+        or the original *frames* list unchanged if no correction was needed.
+        The caller is responsible for cleaning up the temp directory.
+        """
+        import tempfile
+
+        import numpy as np
+        from PIL import Image
+
+        ref = np.array(Image.open(frames[0]).convert("L"), dtype=np.float32)
+        translations: list[tuple[int, int]] = [(0, 0)]
+        for fp in frames[1:]:
+            img_arr = np.array(Image.open(fp).convert("L"), dtype=np.float32)
+            translations.append(_phase_correlation(ref, img_arr))
+
+        max_dx = max(abs(t[0]) for t in translations)
+        max_dy = max(abs(t[1]) for t in translations)
+        if max_dx == 0 and max_dy == 0:
+            return frames
+
+        ref_img = Image.open(frames[0])
+        iw, ih = ref_img.size
+        # Cap correction to 10 % of frame dimensions to avoid over-cropping
+        cap = min(iw // 10, ih // 10)
+        cl = min(int(max_dx), cap)
+        ct = min(int(max_dy), cap)
+        crop_box = (cl, ct, iw - cl, ih - ct)
+
+        tmp = Path(tempfile.mkdtemp(prefix="timelapse_stab_"))
+        result: list[Path] = []
+        for fp, (dx, dy) in zip(frames, translations):
+            dx = max(-cap, min(cap, dx))
+            dy = max(-cap, min(cap, dy))
+            img = Image.open(fp).convert("RGB")
+            # Affine translation matrix (fill edges with black)
+            corrected = img.transform(img.size, Image.AFFINE, (1, 0, -dx, 0, 1, -dy))
+            out = tmp / fp.name
+            corrected.crop(crop_box).save(out, format="JPEG", quality=92)
+            result.append(out)
+
+        _LOGGER.debug(
+            "Stabilization: max shift dx=%d dy=%d, cropped to %s", max_dx, max_dy, crop_box
+        )
+        return result
+
+    # ------------------------------------------------------------------
+    # Sensor overlay (runs in executor)
+    # ------------------------------------------------------------------
+
+    def _apply_overlay(
+        self,
+        image_bytes: bytes,
+        sensor_lines: list[str],
+        position: str,
+        font_size: int,
+    ) -> bytes:
+        """Draw sensor values on a frame with a semi-transparent background.
+
+        Runs in executor thread.
+        """
+        import io
+
+        from PIL import Image, ImageDraw, ImageFont
+
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        try:
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size
+            )
+        except (IOError, OSError):
+            font = ImageFont.load_default()
+
+        pad = 6
+        line_h = font_size + 4
+        widths = [draw.textbbox((0, 0), line, font=font)[2] for line in sensor_lines]
+        block_w = max(widths) + pad * 2
+        block_h = len(sensor_lines) * line_h + pad * 2
+        iw, ih = img.size
+        margin = 10
+
+        origins: dict[str, tuple[int, int]] = {
+            "top_left": (margin, margin),
+            "top_right": (iw - block_w - margin, margin),
+            "bottom_left": (margin, ih - block_h - margin),
+            "bottom_right": (iw - block_w - margin, ih - block_h - margin),
+        }
+        ox, oy = origins.get(position, origins["top_left"])
+
+        draw.rectangle([ox, oy, ox + block_w, oy + block_h], fill=(0, 0, 0, 150))
+        for i, line in enumerate(sensor_lines):
+            draw.text(
+                (ox + pad, oy + pad + i * line_h),
+                line,
+                fill=(255, 255, 255, 255),
+                font=font,
+            )
+
+        composited = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+        buf = io.BytesIO()
+        composited.save(buf, format="JPEG", quality=90)
+        return buf.getvalue()
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -1071,6 +1222,28 @@ def _find_latest_timelapse(output_dir: Path) -> dict | None:
         dt_util.utc_from_timestamp(latest.stat().st_mtime)
     ).isoformat()
     return {"path": str(latest), "type": timelapse_type, "assembled_at": assembled_at}
+
+
+def _phase_correlation(img1, img2) -> tuple[int, int]:
+    """Return (dx, dy) integer translation from img1 to img2 via FFT phase correlation.
+
+    Both inputs must be 2-D numpy float32 arrays of the same shape.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    f1 = np.fft.fft2(img1)
+    f2 = np.fft.fft2(img2)
+    cross = f1 * np.conj(f2)
+    denom = np.abs(cross)
+    denom[denom < 1e-8] = 1e-8
+    corr = np.fft.ifft2(cross / denom).real
+    y, x = np.unravel_index(np.argmax(corr), corr.shape)
+    h, w = img1.shape
+    if y > h // 2:
+        y -= h
+    if x > w // 2:
+        x -= w
+    return int(x), int(y)
 
 
 def _camera_slug(entity_id: str) -> str:
