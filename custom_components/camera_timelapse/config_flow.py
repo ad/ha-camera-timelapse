@@ -369,8 +369,8 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_OVERLAY_SENSORS,
                     default=existing.get(CONF_OVERLAY_SENSORS, DEFAULT_OVERLAY_SENSORS),
-                ): selector.EntityMultiSelector(
-                    selector.EntityMultiSelectorConfig()
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(multiple=True)
                 ),
                 vol.Optional(
                     CONF_OVERLAY_POSITION,
