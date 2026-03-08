@@ -479,6 +479,12 @@ class TimeLapseCoordinator:
 
         if len(frames) < 2:
             _LOGGER.debug("Not enough frames for %s on %s (%d frame(s))", camera_id, date_str, len(frames))
+            # In streaming mode, clean up past-day frame dirs even when assembly is skipped
+            keep_frames = bool(config.get(CONF_KEEP_FRAMES, DEFAULT_KEEP_FRAMES))
+            mode_early = config.get(CONF_MODE, MODE_DAILY)
+            if not keep_frames and mode_early == MODE_DAILY and target_date < dt_util.now().date():
+                await self.hass.async_add_executor_job(shutil.rmtree, str(frame_dir), True)
+                _LOGGER.debug("Streaming mode: removed sparse frame dir %s", frame_dir)
             return
 
         fmt = config.get(CONF_OUTPUT_FORMAT, FORMAT_MP4)
@@ -816,22 +822,41 @@ class TimeLapseCoordinator:
     # ------------------------------------------------------------------
 
     async def async_cleanup_camera(self, camera_id: str) -> None:
-        """Delete frames and daily timelapse files older than max_retention_days."""
+        """Delete frames and daily timelapse files older than max_retention_days.
+
+        Also removes frame dirs for past days whose timelapse has already been
+        assembled, provided frames are not needed for rolling assembly.
+        """
         cameras = self.entry.options.get(CONF_CAMERAS, {})
         config = cameras.get(camera_id, {})
         max_days = int(config.get(CONF_MAX_RETENTION_DAYS, 30))
-        if max_days == 0:
-            return
 
         camera_slug = _camera_slug(camera_id)
-        cutoff = dt_util.now().date() - timedelta(days=max_days)
-
-        await self.hass.async_add_executor_job(
-            self._cleanup_sync, camera_slug, cutoff
+        cutoff = (
+            dt_util.now().date() - timedelta(days=max_days) if max_days > 0 else None
         )
 
-    def _cleanup_sync(self, camera_slug: str, cutoff: date) -> None:
-        # Remove old frame directories
+        await self.hass.async_add_executor_job(
+            self._cleanup_sync, camera_slug, cutoff, config
+        )
+
+    def _cleanup_sync(
+        self, camera_slug: str, cutoff: date | None, config: dict | None = None
+    ) -> None:
+        today = dt_util.now().date()
+        mode = config.get(CONF_MODE, MODE_DAILY) if config else MODE_DAILY
+        keep_frames = (
+            bool(config.get(CONF_KEEP_FRAMES, DEFAULT_KEEP_FRAMES)) if config else True
+        )
+        output_dir = Path(self.storage_path) / camera_slug
+
+        # Rolling window: dates that must be kept for rolling assembly
+        rolling_cutoff: date | None = None
+        if mode in (MODE_ROLLING, MODE_BOTH) and config:
+            n_days = int(config.get(CONF_ROLLING_PERIOD_DAYS, 7))
+            rolling_cutoff = today - timedelta(days=n_days)
+
+        # Remove frame directories
         frames_root = Path(self.storage_path) / "frames" / camera_slug
         if frames_root.exists():
             for day_dir in frames_root.iterdir():
@@ -841,26 +866,52 @@ class TimeLapseCoordinator:
                     dir_date = date.fromisoformat(day_dir.name)
                 except ValueError:
                     continue
-                if dir_date < cutoff:
+
+                # Never touch today's frames
+                if dir_date >= today:
+                    continue
+
+                # Always remove dirs beyond max_retention_days
+                if cutoff and dir_date < cutoff:
                     shutil.rmtree(day_dir, ignore_errors=True)
                     _LOGGER.debug("Removed old frames dir: %s", day_dir)
+                    continue
+
+                # For non-rolling modes: remove assembled frame dirs early
+                # (don't keep raw frames indefinitely once the timelapse is built)
+                if not keep_frames and mode != MODE_ROLLING:
+                    # For MODE_BOTH keep frames inside the rolling window
+                    if rolling_cutoff and dir_date >= rolling_cutoff:
+                        continue
+
+                    fmt = (
+                        config.get(CONF_OUTPUT_FORMAT, FORMAT_MP4)
+                        if config
+                        else FORMAT_MP4
+                    )
+                    assembled = output_dir / f"{dir_date.strftime('%Y-%m-%d')}.{fmt}"
+                    if assembled.exists():
+                        shutil.rmtree(day_dir, ignore_errors=True)
+                        _LOGGER.debug(
+                            "Removed assembled frame dir: %s", day_dir
+                        )
 
         # Remove old daily timelapse files (skip rolling_ files)
-        output_dir = Path(self.storage_path) / camera_slug
         if not output_dir.exists():
             return
-        for tl_file in output_dir.iterdir():
-            if not tl_file.is_file():
-                continue
-            if tl_file.stem.startswith("rolling_"):
-                continue
-            try:
-                file_date = date.fromisoformat(tl_file.stem)
-            except ValueError:
-                continue
-            if file_date < cutoff:
-                tl_file.unlink(missing_ok=True)
-                _LOGGER.debug("Removed old timelapse: %s", tl_file)
+        if cutoff:
+            for tl_file in output_dir.iterdir():
+                if not tl_file.is_file():
+                    continue
+                if tl_file.stem.startswith("rolling_"):
+                    continue
+                try:
+                    file_date = date.fromisoformat(tl_file.stem)
+                except ValueError:
+                    continue
+                if file_date < cutoff:
+                    tl_file.unlink(missing_ok=True)
+                    _LOGGER.debug("Removed old timelapse: %s", tl_file)
 
     # ------------------------------------------------------------------
     # Startup recovery
