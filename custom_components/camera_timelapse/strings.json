@@ -54,7 +54,12 @@
           "stabilization": "Frame stabilization",
           "overlay_sensors": "Overlay sensors",
           "overlay_position": "Overlay position",
-          "overlay_font_size": "Overlay font size"
+          "overlay_font_size": "Overlay font size",
+          "overlay_text_color": "Text color",
+          "overlay_stroke_width": "Stroke width",
+          "overlay_stroke_color": "Stroke color",
+          "overlay_margin": "Margin from edge",
+          "overlay_line_spacing": "Line spacing"
         },
         "data_description": {
           "hdr_frames": "Capture multiple frames per interval and average them to reduce noise. 0 disables this feature.",
@@ -62,7 +67,10 @@
           "placeholder_image": "Path to a JPEG used as the background when the camera is unavailable. Leave empty to use the auto-generated default (placeholder.jpg in the storage directory). The text 'Camera unavailable' is overlaid on the image at runtime.",
           "stabilization": "Compensate for camera shake by aligning frames using phase correlation (translation correction only). Applied at timelapse assembly time. Requires numpy (available in Home Assistant by default).",
           "overlay_sensors": "Select sensors whose current value will be drawn on every captured frame.",
-          "overlay_font_size": "Font size for the sensor overlay text in pixels."
+          "overlay_font_size": "Font size for the sensor overlay text in pixels.",
+          "overlay_stroke_width": "Outline thickness around each character. 0 disables stroke. Combined with the dark background this ensures readability in any lighting.",
+          "overlay_margin": "Distance from the frame edge to the overlay block in pixels.",
+          "overlay_line_spacing": "Extra vertical space between sensor lines in pixels."
         }
       }
     },

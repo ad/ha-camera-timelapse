@@ -18,13 +18,23 @@ from .const import (
     CONF_INTERVAL_MINUTES,
     CONF_KEEP_FRAMES,
     CONF_OVERLAY_FONT_SIZE,
+    CONF_OVERLAY_LINE_SPACING,
+    CONF_OVERLAY_MARGIN,
     CONF_OVERLAY_POSITION,
     CONF_OVERLAY_SENSORS,
+    CONF_OVERLAY_STROKE_COLOR,
+    CONF_OVERLAY_STROKE_WIDTH,
+    CONF_OVERLAY_TEXT_COLOR,
     CONF_PLACEHOLDER_IMAGE,
     CONF_STABILIZATION,
     DEFAULT_OVERLAY_FONT_SIZE,
+    DEFAULT_OVERLAY_LINE_SPACING,
+    DEFAULT_OVERLAY_MARGIN,
     DEFAULT_OVERLAY_POSITION,
     DEFAULT_OVERLAY_SENSORS,
+    DEFAULT_OVERLAY_STROKE_COLOR,
+    DEFAULT_OVERLAY_STROKE_WIDTH,
+    DEFAULT_OVERLAY_TEXT_COLOR,
     DEFAULT_PLACEHOLDER_IMAGE,
     DEFAULT_STABILIZATION,
     CONF_MAX_RETENTION_DAYS,
@@ -233,6 +243,11 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                     CONF_OVERLAY_SENSORS: user_input.get(CONF_OVERLAY_SENSORS, DEFAULT_OVERLAY_SENSORS),
                     CONF_OVERLAY_POSITION: user_input.get(CONF_OVERLAY_POSITION, DEFAULT_OVERLAY_POSITION),
                     CONF_OVERLAY_FONT_SIZE: user_input.get(CONF_OVERLAY_FONT_SIZE, DEFAULT_OVERLAY_FONT_SIZE),
+                    CONF_OVERLAY_TEXT_COLOR: user_input.get(CONF_OVERLAY_TEXT_COLOR, DEFAULT_OVERLAY_TEXT_COLOR),
+                    CONF_OVERLAY_STROKE_WIDTH: user_input.get(CONF_OVERLAY_STROKE_WIDTH, DEFAULT_OVERLAY_STROKE_WIDTH),
+                    CONF_OVERLAY_STROKE_COLOR: user_input.get(CONF_OVERLAY_STROKE_COLOR, DEFAULT_OVERLAY_STROKE_COLOR),
+                    CONF_OVERLAY_MARGIN: user_input.get(CONF_OVERLAY_MARGIN, DEFAULT_OVERLAY_MARGIN),
+                    CONF_OVERLAY_LINE_SPACING: user_input.get(CONF_OVERLAY_LINE_SPACING, DEFAULT_OVERLAY_LINE_SPACING),
                 }
                 self._cameras[camera_id] = cam_config
                 return self.async_create_entry(
@@ -377,6 +392,40 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=8, max=48, step=2, mode=selector.NumberSelectorMode.SLIDER
+                    )
+                ),
+                vol.Optional(
+                    CONF_OVERLAY_TEXT_COLOR,
+                    default=existing.get(CONF_OVERLAY_TEXT_COLOR, DEFAULT_OVERLAY_TEXT_COLOR),
+                ): selector.ColorRGBSelector(),
+                vol.Optional(
+                    CONF_OVERLAY_STROKE_WIDTH,
+                    default=existing.get(CONF_OVERLAY_STROKE_WIDTH, DEFAULT_OVERLAY_STROKE_WIDTH),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=4, step=1, mode=selector.NumberSelectorMode.SLIDER
+                    )
+                ),
+                vol.Optional(
+                    CONF_OVERLAY_STROKE_COLOR,
+                    default=existing.get(CONF_OVERLAY_STROKE_COLOR, DEFAULT_OVERLAY_STROKE_COLOR),
+                ): selector.ColorRGBSelector(),
+                vol.Optional(
+                    CONF_OVERLAY_MARGIN,
+                    default=existing.get(CONF_OVERLAY_MARGIN, DEFAULT_OVERLAY_MARGIN),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=100, step=2, mode=selector.NumberSelectorMode.SLIDER,
+                        unit_of_measurement="px",
+                    )
+                ),
+                vol.Optional(
+                    CONF_OVERLAY_LINE_SPACING,
+                    default=existing.get(CONF_OVERLAY_LINE_SPACING, DEFAULT_OVERLAY_LINE_SPACING),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=30, step=1, mode=selector.NumberSelectorMode.SLIDER,
+                        unit_of_measurement="px",
                     )
                 ),
             }

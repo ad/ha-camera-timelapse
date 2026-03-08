@@ -26,12 +26,22 @@ from .const import (
     CONF_INTERVAL_MINUTES,
     CONF_KEEP_FRAMES,
     CONF_OVERLAY_FONT_SIZE,
+    CONF_OVERLAY_LINE_SPACING,
+    CONF_OVERLAY_MARGIN,
     CONF_OVERLAY_POSITION,
     CONF_OVERLAY_SENSORS,
+    CONF_OVERLAY_STROKE_COLOR,
+    CONF_OVERLAY_STROKE_WIDTH,
+    CONF_OVERLAY_TEXT_COLOR,
     CONF_PLACEHOLDER_IMAGE,
     CONF_STABILIZATION,
     DEFAULT_OVERLAY_FONT_SIZE,
+    DEFAULT_OVERLAY_LINE_SPACING,
+    DEFAULT_OVERLAY_MARGIN,
     DEFAULT_OVERLAY_POSITION,
+    DEFAULT_OVERLAY_STROKE_COLOR,
+    DEFAULT_OVERLAY_STROKE_WIDTH,
+    DEFAULT_OVERLAY_TEXT_COLOR,
     DEFAULT_PLACEHOLDER_IMAGE,
     DEFAULT_STABILIZATION,
     CONF_MAX_RETENTION_DAYS,
@@ -434,10 +444,17 @@ class TimeLapseCoordinator:
                 sensor_lines.append(f"{state.state} {unit}".strip())
 
         if sensor_lines:
-            overlay_pos = config.get(CONF_OVERLAY_POSITION, DEFAULT_OVERLAY_POSITION)
-            overlay_fs = int(config.get(CONF_OVERLAY_FONT_SIZE, DEFAULT_OVERLAY_FONT_SIZE))
             content = await self.hass.async_add_executor_job(
-                self._apply_overlay, content, sensor_lines, overlay_pos, overlay_fs
+                self._apply_overlay,
+                content,
+                sensor_lines,
+                config.get(CONF_OVERLAY_POSITION, DEFAULT_OVERLAY_POSITION),
+                int(config.get(CONF_OVERLAY_FONT_SIZE, DEFAULT_OVERLAY_FONT_SIZE)),
+                tuple(config.get(CONF_OVERLAY_TEXT_COLOR, DEFAULT_OVERLAY_TEXT_COLOR)),
+                int(config.get(CONF_OVERLAY_STROKE_WIDTH, DEFAULT_OVERLAY_STROKE_WIDTH)),
+                tuple(config.get(CONF_OVERLAY_STROKE_COLOR, DEFAULT_OVERLAY_STROKE_COLOR)),
+                int(config.get(CONF_OVERLAY_MARGIN, DEFAULT_OVERLAY_MARGIN)),
+                int(config.get(CONF_OVERLAY_LINE_SPACING, DEFAULT_OVERLAY_LINE_SPACING)),
             )
 
         def _save() -> None:
@@ -918,9 +935,16 @@ class TimeLapseCoordinator:
         sensor_lines: list[str],
         position: str,
         font_size: int,
+        text_color: tuple[int, int, int] = (255, 255, 255),
+        stroke_width: int = 1,
+        stroke_color: tuple[int, int, int] = (0, 0, 0),
+        margin: int = 10,
+        line_spacing: int = 4,
     ) -> bytes:
-        """Draw sensor values on a frame with a semi-transparent background.
+        """Draw sensor values on a frame.
 
+        Combines a semi-transparent background rectangle with per-character
+        stroke for readability in both bright and dark conditions.
         Runs in executor thread.
         """
         import io
@@ -939,28 +963,36 @@ class TimeLapseCoordinator:
             font = ImageFont.load_default()
 
         pad = 6
-        line_h = font_size + 4
-        widths = [draw.textbbox((0, 0), line, font=font)[2] for line in sensor_lines]
+        line_h = font_size + line_spacing
+        widths = [
+            draw.textbbox((0, 0), line, font=font, stroke_width=stroke_width)[2]
+            for line in sensor_lines
+        ]
         block_w = max(widths) + pad * 2
         block_h = len(sensor_lines) * line_h + pad * 2
         iw, ih = img.size
-        margin = 10
 
         origins: dict[str, tuple[int, int]] = {
-            "top_left": (margin, margin),
-            "top_right": (iw - block_w - margin, margin),
-            "bottom_left": (margin, ih - block_h - margin),
+            "top_left":     (margin, margin),
+            "top_right":    (iw - block_w - margin, margin),
+            "bottom_left":  (margin, ih - block_h - margin),
             "bottom_right": (iw - block_w - margin, ih - block_h - margin),
         }
         ox, oy = origins.get(position, origins["top_left"])
 
-        draw.rectangle([ox, oy, ox + block_w, oy + block_h], fill=(0, 0, 0, 150))
+        # Semi-transparent dark background for additional contrast
+        draw.rectangle([ox, oy, ox + block_w, oy + block_h], fill=(0, 0, 0, 140))
+
+        text_fill = (*text_color, 255)
+        stroke_fill = (*stroke_color, 255)
         for i, line in enumerate(sensor_lines):
             draw.text(
                 (ox + pad, oy + pad + i * line_h),
                 line,
-                fill=(255, 255, 255, 255),
+                fill=text_fill,
                 font=font,
+                stroke_width=stroke_width,
+                stroke_fill=stroke_fill,
             )
 
         composited = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")

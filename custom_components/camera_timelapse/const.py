@@ -95,3 +95,18 @@ DEFAULT_OVERLAY_POSITION = "top_left"
 
 CONF_OVERLAY_FONT_SIZE = "overlay_font_size"  # int, pixels
 DEFAULT_OVERLAY_FONT_SIZE = 16
+
+CONF_OVERLAY_TEXT_COLOR = "overlay_text_color"   # [r, g, b]
+DEFAULT_OVERLAY_TEXT_COLOR: list = [255, 255, 255]  # white
+
+CONF_OVERLAY_STROKE_WIDTH = "overlay_stroke_width"  # int, pixels (0 = off)
+DEFAULT_OVERLAY_STROKE_WIDTH = 1
+
+CONF_OVERLAY_STROKE_COLOR = "overlay_stroke_color"  # [r, g, b]
+DEFAULT_OVERLAY_STROKE_COLOR: list = [0, 0, 0]  # black
+
+CONF_OVERLAY_MARGIN = "overlay_margin"  # int, pixels from edge
+DEFAULT_OVERLAY_MARGIN = 10
+
+CONF_OVERLAY_LINE_SPACING = "overlay_line_spacing"  # int, extra pixels between lines
+DEFAULT_OVERLAY_LINE_SPACING = 4
