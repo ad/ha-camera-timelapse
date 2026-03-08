@@ -964,7 +964,7 @@ class TimeLapseCoordinator:
 
             # latest_frame — most recent JPEG across all day dirs, or placeholder
             frames_root = Path(self.storage_path) / "frames" / camera_slug
-            placeholder_path = Path(self.storage_path) / ".placeholders" / f"{camera_slug}.jpg"
+            placeholder_path = Path(self.storage_path) / "placeholder.jpg"
             latest: Path | None = await self.hass.async_add_executor_job(
                 _find_latest_frame_any, frames_root, placeholder_path
             )
@@ -1035,14 +1035,6 @@ def _create_default_placeholder(storage_path: str) -> None:
     img = Image.new("RGB", (640, 360), color=(30, 30, 30))
     img.save(str(target), format="JPEG", quality=85)
 
-
-
-def _find_latest_frame(frame_dir: Path) -> Path | None:
-    """Return the most recently modified JPEG in *frame_dir*, or None."""
-    if not frame_dir.exists():
-        return None
-    files = list(frame_dir.glob("*.jpg"))
-    return max(files, key=lambda f: f.stat().st_mtime) if files else None
 
 
 def _find_latest_frame_any(frames_root: Path, placeholder_path: Path) -> Path | None:
