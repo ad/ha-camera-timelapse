@@ -985,7 +985,7 @@ class TimeLapseCoordinator:
         actual_line_h = max(line_heights) if line_heights else font_size
         line_h = actual_line_h + line_spacing
         block_w = max(widths) + pad * 2
-        block_h = len(sensor_lines) * line_h + pad * 2
+        block_h = len(sensor_lines) * line_h - line_spacing + pad * 2
         iw, ih = img.size
 
         origins: dict[str, tuple[int, int]] = {
