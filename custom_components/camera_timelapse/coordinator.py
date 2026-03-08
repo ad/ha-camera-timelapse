@@ -840,6 +840,14 @@ class TimeLapseCoordinator:
             self._cleanup_sync, camera_slug, cutoff, config
         )
 
+        # Refresh disk usage sensor after cleanup
+        mb = await self.hass.async_add_executor_job(self._calc_disk_mb, camera_slug)
+        self._disk_usage_mb[camera_id] = mb
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_SENSOR_UPDATE.format(self.entry.entry_id, camera_id),
+        )
+
     def _cleanup_sync(
         self, camera_slug: str, cutoff: date | None, config: dict | None = None
     ) -> None:
