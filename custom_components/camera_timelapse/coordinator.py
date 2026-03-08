@@ -996,9 +996,6 @@ class TimeLapseCoordinator:
         }
         ox, oy = origins.get(position, origins["top_left"])
 
-        # Semi-transparent dark background for additional contrast
-        draw.rectangle([ox, oy, ox + block_w, oy + block_h], fill=(0, 0, 0, 140))
-
         text_fill = (*text_color, 255)
         stroke_fill = (*stroke_color, 255)
         for i, line in enumerate(sensor_lines):
