@@ -289,18 +289,19 @@ class TimeLapseCoordinator:
             trigger_time = self._get_sunset_today()
             # If sunset has already passed today, trigger at midnight and reassemble
             if trigger_time is None or trigger_time <= now:
-                trigger_time = now.replace(hour=23, minute=59, second=0, microsecond=0)
+                trigger_time = now.replace(hour=23, minute=59, second=30, microsecond=0)
                 if trigger_time <= now:
                     trigger_time = trigger_time + timedelta(days=1)
         elif time_range_type == TIME_RANGE_CUSTOM:
             end_str = config.get(CONF_TIME_END, "19:00:00")
             h, m = int(end_str[:2]), int(end_str[3:5])
-            trigger_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            # +30 s so that any capture firing at hh:mm:00 finishes before assembly reads the dir
+            trigger_time = now.replace(hour=h, minute=m, second=30, microsecond=0)
             if trigger_time <= now:
                 trigger_time = trigger_time + timedelta(days=1)
         else:
-            # TIME_RANGE_ALWAYS → assemble at 23:59
-            trigger_time = now.replace(hour=23, minute=59, second=0, microsecond=0)
+            # TIME_RANGE_ALWAYS → assemble at 23:59:30 (+30 s to let the last capture complete)
+            trigger_time = now.replace(hour=23, minute=59, second=30, microsecond=0)
             if trigger_time <= now:
                 trigger_time = trigger_time + timedelta(days=1)
 
@@ -1076,8 +1077,8 @@ class TimeLapseCoordinator:
                 except ValueError:
                     continue
 
-                # Never touch today's frames
-                if dir_date >= today:
+                # Never touch frames from the future
+                if dir_date > today:
                     continue
 
                 # Always remove dirs beyond max_retention_days
