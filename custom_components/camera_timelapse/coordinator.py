@@ -323,8 +323,16 @@ class TimeLapseCoordinator:
             return
 
         target_date = dt_util.now().date()
-        await self.async_assemble_daily(camera_id, target_date)
-        await self.async_cleanup_camera(camera_id)
+        try:
+            await self.async_assemble_daily(camera_id, target_date)
+        except Exception:
+            _LOGGER.exception("Assembly failed for %s on %s", camera_id, target_date)
+
+        try:
+            await self.async_cleanup_camera(camera_id)
+        except Exception:
+            _LOGGER.exception("Cleanup failed for %s", camera_id)
+
         await self._schedule_assembly_trigger(camera_id, config)
 
     # ------------------------------------------------------------------
@@ -1087,24 +1095,33 @@ class TimeLapseCoordinator:
                     _LOGGER.debug("Removed old frames dir: %s", day_dir)
                     continue
 
-                # For non-rolling modes: remove assembled frame dirs early
-                # (don't keep raw frames indefinitely once the timelapse is built)
+                # For non-rolling modes: remove past frame dirs when keep_frames
+                # is disabled — frames are no longer needed after the assembly
+                # window has passed (regardless of whether assembly succeeded).
                 if not keep_frames and mode != MODE_ROLLING:
                     # For MODE_BOTH keep frames inside the rolling window
                     if rolling_cutoff and dir_date >= rolling_cutoff:
                         continue
 
-                    fmt = (
-                        config.get(CONF_OUTPUT_FORMAT, FORMAT_MP4)
-                        if config
-                        else FORMAT_MP4
-                    )
-                    assembled = output_dir / f"{dir_date.strftime('%Y-%m-%d')}.{fmt}"
-                    if assembled.exists():
+                    if dir_date < today:
+                        # Past day: always remove (assembly already had its chance)
                         shutil.rmtree(day_dir, ignore_errors=True)
                         _LOGGER.debug(
-                            "Removed assembled frame dir: %s", day_dir
+                            "Removed past frame dir: %s", day_dir
                         )
+                    else:
+                        # Today: only remove if timelapse was assembled
+                        fmt = (
+                            config.get(CONF_OUTPUT_FORMAT, FORMAT_MP4)
+                            if config
+                            else FORMAT_MP4
+                        )
+                        assembled = output_dir / f"{dir_date.strftime('%Y-%m-%d')}.{fmt}"
+                        if assembled.exists():
+                            shutil.rmtree(day_dir, ignore_errors=True)
+                            _LOGGER.debug(
+                                "Removed assembled frame dir: %s", day_dir
+                            )
 
         # Remove old daily timelapse files (skip rolling_ files)
         if not output_dir.exists():
