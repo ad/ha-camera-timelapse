@@ -69,6 +69,17 @@ SIGNAL_SENSOR_UPDATE = "camera_timelapse_sensor_update_{}_{}"   # .format(entry_
 CONF_HDR_FRAMES = "hdr_frames"
 DEFAULT_HDR_FRAMES = 0  # 0 = disabled, 2-5 = number of frames to average
 
+# JPEG quality for saved frames (1–95). Lower = smaller files, higher = better quality.
+CONF_FRAME_QUALITY = "frame_quality"
+DEFAULT_FRAME_QUALITY = 85
+
+# Target frame dimensions in pixels. 0 = use original size.
+# If only one is set, the other is derived from the original aspect ratio.
+CONF_FRAME_WIDTH = "frame_width"
+CONF_FRAME_HEIGHT = "frame_height"
+DEFAULT_FRAME_WIDTH = 0
+DEFAULT_FRAME_HEIGHT = 0
+
 # Streaming mode: discard frame files after each assembly instead of keeping them.
 # Incompatible with rolling mode (rolling needs historical frames on disk).
 CONF_KEEP_FRAMES = "keep_frames"

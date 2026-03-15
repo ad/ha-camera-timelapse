@@ -14,6 +14,9 @@ from .const import (
     CONF_CAMERA_ENTITY_ID,
     CONF_CAMERAS,
     CONF_FPS,
+    CONF_FRAME_HEIGHT,
+    CONF_FRAME_QUALITY,
+    CONF_FRAME_WIDTH,
     CONF_HDR_FRAMES,
     CONF_INTERVAL_MINUTES,
     CONF_KEEP_FRAMES,
@@ -47,6 +50,9 @@ from .const import (
     CONF_TIME_START,
     DEFAULT_ASSEMBLY_INTERVAL_MINUTES,
     DEFAULT_FPS,
+    DEFAULT_FRAME_HEIGHT,
+    DEFAULT_FRAME_QUALITY,
+    DEFAULT_FRAME_WIDTH,
     DEFAULT_HDR_FRAMES,
     DEFAULT_INTERVAL_MINUTES,
     DEFAULT_KEEP_FRAMES,
@@ -236,6 +242,9 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                     CONF_FPS: user_input[CONF_FPS],
                     CONF_MAX_RETENTION_DAYS: user_input[CONF_MAX_RETENTION_DAYS],
                     CONF_ASSEMBLY_INTERVAL_MINUTES: user_input[CONF_ASSEMBLY_INTERVAL_MINUTES],
+                    CONF_FRAME_QUALITY: user_input.get(CONF_FRAME_QUALITY, DEFAULT_FRAME_QUALITY),
+                    CONF_FRAME_WIDTH: user_input.get(CONF_FRAME_WIDTH, DEFAULT_FRAME_WIDTH),
+                    CONF_FRAME_HEIGHT: user_input.get(CONF_FRAME_HEIGHT, DEFAULT_FRAME_HEIGHT),
                     CONF_HDR_FRAMES: user_input.get(CONF_HDR_FRAMES, DEFAULT_HDR_FRAMES),
                     CONF_KEEP_FRAMES: user_input.get(CONF_KEEP_FRAMES, DEFAULT_KEEP_FRAMES),
                     CONF_PLACEHOLDER_IMAGE: user_input.get(CONF_PLACEHOLDER_IMAGE, DEFAULT_PLACEHOLDER_IMAGE).strip(),
@@ -342,6 +351,32 @@ class CameraTimeLapseOptionsFlow(config_entries.OptionsFlow):
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=0, max=1440, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="min"
+                    )
+                ),
+                vol.Optional(
+                    CONF_FRAME_QUALITY,
+                    default=existing.get(CONF_FRAME_QUALITY, DEFAULT_FRAME_QUALITY),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=10, max=95, step=5, mode=selector.NumberSelectorMode.SLIDER
+                    )
+                ),
+                vol.Optional(
+                    CONF_FRAME_WIDTH,
+                    default=existing.get(CONF_FRAME_WIDTH, DEFAULT_FRAME_WIDTH),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=7680, step=1, mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="px",
+                    )
+                ),
+                vol.Optional(
+                    CONF_FRAME_HEIGHT,
+                    default=existing.get(CONF_FRAME_HEIGHT, DEFAULT_FRAME_HEIGHT),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=4320, step=1, mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="px",
                     )
                 ),
                 vol.Optional(

@@ -22,6 +22,9 @@ from .const import (
     CONF_ASSEMBLY_INTERVAL_MINUTES,
     CONF_CAMERAS,
     CONF_FPS,
+    CONF_FRAME_HEIGHT,
+    CONF_FRAME_QUALITY,
+    CONF_FRAME_WIDTH,
     CONF_HDR_FRAMES,
     CONF_INTERVAL_MINUTES,
     CONF_KEEP_FRAMES,
@@ -52,6 +55,9 @@ from .const import (
     CONF_TIME_END,
     CONF_TIME_RANGE_TYPE,
     CONF_TIME_START,
+    DEFAULT_FRAME_HEIGHT,
+    DEFAULT_FRAME_QUALITY,
+    DEFAULT_FRAME_WIDTH,
     DEFAULT_HDR_FRAMES,
     DEFAULT_KEEP_FRAMES,
     DOMAIN,
@@ -466,9 +472,27 @@ class TimeLapseCoordinator:
                 int(config.get(CONF_OVERLAY_LINE_SPACING, DEFAULT_OVERLAY_LINE_SPACING)),
             )
 
+        quality = int(config.get(CONF_FRAME_QUALITY, DEFAULT_FRAME_QUALITY))
+        target_w = int(config.get(CONF_FRAME_WIDTH, DEFAULT_FRAME_WIDTH))
+        target_h = int(config.get(CONF_FRAME_HEIGHT, DEFAULT_FRAME_HEIGHT))
+
         def _save() -> None:
+            import io
+            from PIL import Image
             frame_dir.mkdir(parents=True, exist_ok=True)
-            frame_path.write_bytes(content)
+            img = Image.open(io.BytesIO(content))
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            if target_w or target_h:
+                orig_w, orig_h = img.size
+                if target_w and target_h:
+                    new_size = (target_w, target_h)
+                elif target_w:
+                    new_size = (target_w, max(1, round(orig_h * target_w / orig_w)))
+                else:
+                    new_size = (max(1, round(orig_w * target_h / orig_h)), target_h)
+                img = img.resize(new_size, Image.LANCZOS)
+            img.save(frame_path, format="JPEG", quality=quality, optimize=True)
 
         await self.hass.async_add_executor_job(_save)
         self._latest_frame_path[camera_id] = frame_path
